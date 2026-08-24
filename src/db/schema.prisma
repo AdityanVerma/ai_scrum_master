@@ -1,0 +1,552 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum UserRole {
+  manager
+  developer
+  admin
+}
+
+enum SprintStatus {
+  draft
+  planning
+  proposal_ready
+  under_review
+  approved
+  active
+  completed
+  cancelled
+}
+
+enum SkillLevel {
+  beginner
+  intermediate
+  advanced
+  expert
+}
+
+enum SprintPhaseType {
+  development
+  integration
+  testing
+  bug_fixing
+  review
+  deployment
+  buffer
+}
+
+enum TaskComplexity {
+  trivial
+  low
+  medium
+  high
+  very_high
+}
+
+enum TaskStatus {
+  proposed
+  confirmed
+  in_progress
+  blocked
+  in_review
+  done
+  cancelled
+}
+
+enum TaskOrigin {
+  ai_generated
+  manually_created
+  manager_edited
+}
+
+enum TaskAssignmentStatus {
+  pending
+  recommended
+  approved
+  reassigned
+}
+
+enum EstimateKind {
+  ai
+  developer
+  actual
+}
+
+enum ProposalStatus {
+  generated
+  under_review
+  approved
+  superseded
+}
+
+enum DocumentSourceType {
+  documentation
+  codebase
+  wiki
+  other
+}
+
+enum AIRunStatus {
+  running
+  succeeded
+  failed
+  retrying
+}
+
+// ============================================================
+// Operational / Business Data
+// ============================================================
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String   @unique
+  role      UserRole
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships        TeamMembership[]
+  skills             UserSkill[]
+  availability       UserAvailability[]
+  createdSprints     Sprint[] @relation("SprintCreatedBy")
+  submittedRequirements SprintRequirement[] @relation("RequirementSubmittedBy")
+  taskRecommendations TaskAssignment[] @relation("AIRecommendedUser")
+  taskApprovals       TaskAssignment[] @relation("ApprovedUser")
+  assignmentApprovals TaskAssignment[] @relation("ApprovedByUser")
+  recordedEstimates   TaskEstimate[] @relation("EstimateRecordedBy")
+  proposalApprovals   SprintProposal[] @relation("ProposalApprovedBy")
+  proposalRevisions   ProposalRevision[] @relation("RevisionEditedBy")
+
+  @@map("users")
+}
+
+model Team {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  memberships TeamMembership[]
+  sprints     Sprint[]
+
+  @@map("teams")
+}
+
+model TeamMembership {
+  id       String    @id @default(uuid()) @db.Uuid
+  teamId   String    @map("team_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  leftAt   DateTime? @map("left_at") @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_memberships")
+
+  // V1 design calls for a partial unique index:
+  // UNIQUE(team_id, user_id) WHERE left_at IS NULL
+  // Prisma schema cannot express this partial unique index directly.
+}
+
+model Skill {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  category  String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  users UserSkill[]
+  tasks TaskSkill[]
+
+  @@map("skills")
+}
+
+model UserSkill {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  skillId        String      @map("skill_id") @db.Uuid
+  level          SkillLevel
+  yearsExperience Decimal?   @map("years_experience") @db.Decimal(4, 1)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+  @@index([skillId])
+  @@map("user_skills")
+}
+
+model UserAvailability {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  hoursPerWeek  Decimal  @map("hours_per_week") @db.Decimal(5, 2)
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  note          String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, effectiveFrom, effectiveTo])
+  @@map("user_availability")
+}
+
+// ============================================================
+// Sprint Planning
+// ============================================================
+
+model Sprint {
+  id        String       @id @default(uuid()) @db.Uuid
+  teamId    String       @map("team_id") @db.Uuid
+  name      String
+  goal      String?
+  startDate DateTime?    @map("start_date") @db.Date
+  endDate   DateTime?    @map("end_date") @db.Date
+  status    SprintStatus @default(draft)
+  createdBy String       @map("created_by") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  team           Team                   @relation(fields: [teamId], references: [id])
+  creator        User                   @relation("SprintCreatedBy", fields: [createdBy], references: [id])
+  requirements   SprintRequirement[]
+  interpretations SprintRequirementInterpretation[]
+  phases         SprintPhase[]
+  tasks          Task[]
+  proposals      SprintProposal[]
+  aiRuns         AIRun[]
+
+  @@index([teamId, status])
+  @@index([createdBy])
+  @@map("sprints")
+}
+
+model SprintRequirement {
+  id                  String   @id @default(uuid()) @db.Uuid
+  sprintId            String   @map("sprint_id") @db.Uuid
+  functions           String?
+  features            String?
+  goals               String?
+  additionalContext   String?  @map("additional_context")
+  desiredDurationDays Int?     @map("desired_duration_days")
+  submittedBy         String   @map("submitted_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  sprint        Sprint                         @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  submitter     User                           @relation("RequirementSubmittedBy", fields: [submittedBy], references: [id])
+  interpretations SprintRequirementInterpretation[]
+
+  @@index([sprintId])
+  @@index([submittedBy])
+  @@map("sprint_requirements")
+}
+
+model SprintRequirementInterpretation {
+  id                   String   @id @default(uuid()) @db.Uuid
+  sprintRequirementId  String   @map("sprint_requirement_id") @db.Uuid
+  aiRunId              String   @map("ai_run_id") @db.Uuid
+  structuredOutput     Json     @map("structured_output")
+  isSufficient         Boolean  @map("is_sufficient")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  requirement SprintRequirement @relation(fields: [sprintRequirementId], references: [id], onDelete: Cascade)
+  aiRun       AIRun              @relation(fields: [aiRunId], references: [id])
+
+  @@index([sprintRequirementId])
+  @@index([aiRunId])
+  @@map("sprint_requirement_interpretations")
+}
+
+model SprintPhase {
+  id          String           @id @default(uuid()) @db.Uuid
+  sprintId    String           @map("sprint_id") @db.Uuid
+  phaseType   SprintPhaseType  @map("phase_type")
+  startDate   DateTime         @map("start_date") @db.Date
+  endDate     DateTime         @map("end_date") @db.Date
+  sortOrder   Int              @map("sort_order")
+  description String?
+
+  sprint Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  @@index([sprintId, sortOrder])
+  @@map("sprint_phases")
+}
+
+// ============================================================
+// Tasks
+// ============================================================
+
+model Task {
+  id                   String         @id @default(uuid()) @db.Uuid
+  sprintId             String         @map("sprint_id") @db.Uuid
+  title                String
+  description          String
+  taskType             String?        @map("task_type")
+  complexity            TaskComplexity
+  expectedOutcome      String?        @map("expected_outcome")
+  completionCriteria   String?        @map("completion_criteria")
+  status               TaskStatus     @default(proposed)
+  requiresCodebaseContext Boolean     @default(false) @map("requires_codebase_context")
+  origin               TaskOrigin     @default(ai_generated)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sprint        Sprint                @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  dependencies  TaskDependency[]      @relation("DependentTask")
+  prerequisites TaskDependency[]      @relation("PrerequisiteTask")
+  skills        TaskSkill[]
+  assignment    TaskAssignment?
+  estimates     TaskEstimate[]
+  embedding     TaskEmbedding?
+  contextRefs   AIRunContextReference[]
+
+  @@index([sprintId, status])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id                String @id @default(uuid()) @db.Uuid
+  taskId            String @map("task_id") @db.Uuid
+  dependsOnTaskId   String @map("depends_on_task_id") @db.Uuid
+
+  task            Task @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask   Task @relation("PrerequisiteTask", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+  @@map("task_dependencies")
+
+  // DB-level check required:
+  // CHECK(task_id <> depends_on_task_id)
+}
+
+model TaskSkill {
+  id            String     @id @default(uuid()) @db.Uuid
+  taskId        String     @map("task_id") @db.Uuid
+  skillId       String     @map("skill_id") @db.Uuid
+  requiredLevel SkillLevel @map("required_level")
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, skillId])
+  @@index([skillId])
+  @@map("task_skills")
+}
+
+model TaskAssignment {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  taskId                String                  @unique @map("task_id") @db.Uuid
+  aiRecommendedUserId   String?                 @map("ai_recommended_user_id") @db.Uuid
+  aiRecommendationReason String?                @map("ai_recommendation_reason")
+  aiRunId               String?                 @map("ai_run_id") @db.Uuid
+  approvedUserId        String?                 @map("approved_user_id") @db.Uuid
+  approvedBy            String?                 @map("approved_by") @db.Uuid
+  approvedAt            DateTime?               @map("approved_at") @db.Timestamptz(6)
+  status                TaskAssignmentStatus   @default(pending)
+  createdAt             DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  task             Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  aiRecommendedUser User? @relation("AIRecommendedUser", fields: [aiRecommendedUserId], references: [id])
+  aiRun             AIRun? @relation(fields: [aiRunId], references: [id])
+  approvedUser      User? @relation("ApprovedUser", fields: [approvedUserId], references: [id])
+  approver          User? @relation("ApprovedByUser", fields: [approvedBy], references: [id])
+
+  @@index([aiRecommendedUserId])
+  @@index([aiRunId])
+  @@index([approvedUserId])
+  @@index([approvedBy])
+  @@map("task_assignments")
+}
+
+model TaskEstimate {
+  id                  String       @id @default(uuid()) @db.Uuid
+  taskId              String       @map("task_id") @db.Uuid
+  kind                EstimateKind
+  hours               Decimal      @db.Decimal(6, 2)
+  confidence          Decimal?     @db.Decimal(3, 2)
+  provider            String?
+  model               String?
+  aiRunId             String?      @map("ai_run_id") @db.Uuid
+  recordedBy          String?      @map("recorded_by") @db.Uuid
+  reasonForDifference String?      @map("reason_for_difference")
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  aiRun    AIRun? @relation(fields: [aiRunId], references: [id])
+  recorder User?  @relation("EstimateRecordedBy", fields: [recordedBy], references: [id])
+
+  @@index([taskId, kind])
+  @@index([aiRunId])
+  @@index([recordedBy])
+  @@map("task_estimates")
+
+  // Additional DB CHECK constraints from the design should be added
+  // in the first SQL migration:
+  // - confidence between 0 and 1
+  // - kind-specific provider/model rules
+}
+
+model SprintProposal {
+  id         String         @id @default(uuid()) @db.Uuid
+  sprintId   String         @map("sprint_id") @db.Uuid
+  aiRunId    String         @map("ai_run_id") @db.Uuid
+  version    Int
+  snapshot   Json
+  status     ProposalStatus  @default(generated)
+  approvedBy String?        @map("approved_by") @db.Uuid
+  approvedAt DateTime?      @map("approved_at") @db.Timestamptz(6)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  sprint    Sprint             @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  aiRun     AIRun              @relation(fields: [aiRunId], references: [id])
+  approver  User?              @relation("ProposalApprovedBy", fields: [approvedBy], references: [id])
+  revisions ProposalRevision[]
+
+  @@unique([sprintId, version])
+  @@index([aiRunId])
+  @@index([approvedBy])
+  @@map("sprint_proposals")
+}
+
+model ProposalRevision {
+  id           String   @id @default(uuid()) @db.Uuid
+  proposalId   String   @map("proposal_id") @db.Uuid
+  editedBy     String   @map("edited_by") @db.Uuid
+  changeSummary String? @map("change_summary")
+  changes      Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  proposal SprintProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  editor   User           @relation("RevisionEditedBy", fields: [editedBy], references: [id])
+
+  @@index([proposalId])
+  @@index([editedBy])
+  @@map("proposal_revisions")
+}
+
+// ============================================================
+// Retrieval / RAG
+// ============================================================
+
+model Document {
+  id          String             @id @default(uuid()) @db.Uuid
+  sourceType  DocumentSourceType @map("source_type")
+  sourceRef   String             @map("source_ref")
+  title       String?
+  contentHash String             @map("content_hash")
+  metadata    Json?
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  chunks DocumentChunk[]
+
+  @@unique([sourceType, sourceRef])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  chunkIndex Int      @map("chunk_index")
+  content    String
+  // Prisma currently does not model pgvector as a native scalar.
+  // Keep the exact DB type in the migration:
+  // embedding vector(1536)
+  embedding  Unsupported("vector(1536)")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  document   Document                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  contextRefs AIRunContextReference[]
+
+  @@index([documentId])
+  @@map("document_chunks")
+
+  // V1 design requires:
+  // UNIQUE(document_id, chunk_index) WHERE is_active
+  // and an HNSW vector index:
+  // CREATE INDEX ... ON document_chunks USING hnsw (embedding vector_cosine_ops);
+}
+
+model TaskEmbedding {
+  id          String   @id @default(uuid()) @db.Uuid
+  taskId      String   @unique @map("task_id") @db.Uuid
+  embedding   Unsupported("vector(1536)")
+  contentHash String   @map("content_hash")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_embeddings")
+
+  // Add an HNSW vector index in SQL migration:
+  // CREATE INDEX ... ON task_embeddings USING hnsw (embedding vector_cosine_ops);
+}
+
+// ============================================================
+// AI Audit
+// ============================================================
+
+model AIRun {
+  id           String      @id @default(uuid()) @db.Uuid
+  workflowRunId String     @map("workflow_run_id") @db.Uuid
+  sprintId      String?    @map("sprint_id") @db.Uuid
+  nodeName     String      @map("node_name")
+  attempt      Int         @default(1)
+  provider     String
+  model        String
+  promptVersion String?    @map("prompt_version")
+  status       AIRunStatus
+  inputRef     Json?       @map("input_ref")
+  outputRef    Json?       @map("output_ref")
+  error        String?
+  inputTokens  Int?        @map("input_tokens")
+  outputTokens Int?        @map("output_tokens")
+  durationMs   Int?        @map("duration_ms")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  sprint          Sprint?                          @relation(fields: [sprintId], references: [id])
+  contextRefs     AIRunContextReference[]
+  estimates       TaskEstimate[]
+  assignments     TaskAssignment[]
+  interpretations SprintRequirementInterpretation[]
+  proposals       SprintProposal[]
+
+  @@index([workflowRunId])
+  @@index([sprintId, nodeName])
+  @@map("ai_runs")
+}
+
+model AIRunContextReference {
+  id                 String   @id @default(uuid()) @db.Uuid
+  aiRunId            String   @map("ai_run_id") @db.Uuid
+  documentChunkId    String?  @map("document_chunk_id") @db.Uuid
+  historicalTaskId   String?  @map("historical_task_id") @db.Uuid
+  similarityScore    Decimal? @map("similarity_score") @db.Decimal(5, 4)
+  rank               Int?
+
+  aiRun         AIRun          @relation(fields: [aiRunId], references: [id], onDelete: Cascade)
+  documentChunk DocumentChunk? @relation(fields: [documentChunkId], references: [id])
+  historicalTask Task?         @relation(fields: [historicalTaskId], references: [id])
+
+  @@index([aiRunId])
+  @@index([documentChunkId])
+  @@index([historicalTaskId])
+  @@map("ai_run_context_references")
+
+  // DB CHECK required:
+  // CHECK(document_chunk_id IS NOT NULL OR historical_task_id IS NOT NULL)
+}
