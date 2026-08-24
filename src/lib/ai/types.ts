@@ -1,14 +1,7 @@
-export type SprintTask = {
-  title: string;
-  description: string;
-  skills: string[];
-  dependencies: string[];
-  complexity: 'LOW' | 'MEDIUM' | 'HIGH';
-};
+export type { SprintProposal, sprintTaskSchema } from './schemas';
 
-export type SprintProposal = {
-  sprintGoal: string;
-  summary: string;
-  tasks: SprintTask[];
-  risks: string[];
-};
+import type { z } from 'zod';
+
+import { sprintTaskSchema } from './schemas';
+
+export type SprintTask = z.infer<typeof sprintTaskSchema>;
