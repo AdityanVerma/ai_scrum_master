@@ -19,7 +19,6 @@ type SprintTask = {
   id: string;
   title: string;
   description: string;
-  complexity: 'LOW' | 'MEDIUM' | 'HIGH';
 };
 
 export async function analyzeDependencies(
@@ -31,7 +30,6 @@ export async function analyzeDependencies(
 ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
-Complexity: ${task.complexity}
 `,
     )
     .join('\n');

@@ -20,7 +20,6 @@ type SprintTask = {
   id: string;
   title: string;
   description: string;
-  complexity: 'LOW' | 'MEDIUM' | 'HIGH';
 };
 
 export async function identifySkills(
@@ -32,7 +31,6 @@ export async function identifySkills(
 ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
-Complexity: ${task.complexity}
 `,
     )
     .join('\n');

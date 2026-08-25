@@ -6,8 +6,6 @@ const sprintTaskSchema = z.object({
   id: z.string(),
   title: z.string().min(1),
   description: z.string().min(1),
-  skills: z.array(z.string()),
-  complexity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
 });
 
 const taskBreakdownSchema = z.object({
@@ -64,13 +62,12 @@ For each task provide:
 - A unique ID
 - A clear title
 - A concise description
-- Required technical skills
-- Complexity: LOW, MEDIUM, or HIGH
 
 Do NOT:
-- Create dependencies between tasks
-- Assign tasks to team members
+- Identify skills
+- Create dependencies
 - Estimate hours
+- Assign team members
 - Invent requirements that were not provided
 - Combine unrelated features into one task
 
@@ -81,9 +78,7 @@ Return ONLY valid JSON in exactly this structure:
     {
       "id": "TASK-001",
       "title": "string",
-      "description": "string",
-      "skills": ["string"],
-      "complexity": "MEDIUM"
+      "description": "string"
     }
   ]
 }

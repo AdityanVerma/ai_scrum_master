@@ -21,7 +21,6 @@ type SprintTask = {
   id: string;
   title: string;
   description: string;
-  complexity: 'LOW' | 'MEDIUM' | 'HIGH';
 };
 
 type TaskSkills = {
@@ -42,7 +41,6 @@ export async function estimateTasks(
 ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
-Complexity: ${task.complexity}
 Skills: ${skills.join(', ')}
 `;
     })
