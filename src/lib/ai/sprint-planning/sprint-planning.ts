@@ -5,6 +5,7 @@ import { breakDownTasks } from '@/lib/ai/sprint-planning/task-breakdown';
 import { estimateTasks } from '@/lib/ai/sprint-planning/task-estimation';
 import { validateDependencies } from '@/lib/ai/sprint-planning/dependency-validation';
 import { correctDependencies } from '@/lib/ai/sprint-planning/dependency-correction';
+import { buildSprintProposal } from '@/lib/ai/sprint-planning/build-sprint-proposal';
 
 export type SprintInput = {
   name: string;
@@ -64,6 +65,15 @@ export async function planSprint(sprintInput: SprintInput) {
     skillIdentification.taskSkills,
   );
 
+  // 8. Build final sprint proposal
+  const sprintProposal = buildSprintProposal({
+    sprintInput,
+    tasks: taskBreakdown.tasks,
+    taskSkills: skillIdentification.taskSkills,
+    estimates: taskEstimation.estimates,
+    dependencies: finalDependencies,
+  });
+
   return {
     status: 'READY' as const,
     requirementAnalysis,
@@ -74,5 +84,6 @@ export async function planSprint(sprintInput: SprintInput) {
     finalDependencies,
     skillIdentification,
     taskEstimation,
+    sprintProposal,
   };
 }

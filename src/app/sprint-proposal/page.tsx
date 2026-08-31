@@ -65,7 +65,7 @@ export default function SprintProposalPage() {
                     .filter(Boolean),
             };
 
-            const response = await fetch("/api/sprint-proposal", {
+            const response = await fetch("/api/sprint-planning", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -75,15 +75,16 @@ export default function SprintProposalPage() {
 
             const result = await response.json();
 
-            console.log("API Response:", result);
-
             if (!response.ok) {
-                throw new Error(result.error || "Failed to generate proposal.");
+                throw new Error(
+                    result.error || "Failed to generate sprint proposal.",
+                );
             }
 
-            setProposal(result.data);
+            console.log("Sprint Planning Result:", result);
+
         } catch (error) {
-            console.error("Failed to generate sprint proposal:", error);
+            console.error("Sprint planning failed:", error);
         } finally {
             setIsGenerating(false);
         }
