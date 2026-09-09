@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-
 import {
   planSprint,
   type SprintInput,
 } from '@/lib/ai/sprint-planning/sprint-planning';
+import { saveSprintProposal } from '@/lib/db/save-sprint-proposal';
 
 export async function POST(request: Request) {
   try {
@@ -26,6 +26,18 @@ export async function POST(request: Request) {
     }
 
     const result = await planSprint(body);
+
+    if (result.status === 'READY') {
+      const savedSprint = await saveSprintProposal(result.sprintProposal);
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...result,
+          savedSprint,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
