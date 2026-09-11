@@ -14,6 +14,7 @@ model Sprint {
   startDate           DateTime
   endDate             DateTime
   totalEstimatedHours Float
+  status              SprintStatus @default(PLANNED)
 
   tasks               SprintTask[]
 
@@ -29,6 +30,7 @@ model SprintTask {
 
   complexity      TaskComplexity
   estimatedHours  Float
+  status          TaskStatus       @default(TODO)
 
   sprintId        String
   sprint          Sprint           @relation(fields: [sprintId], references: [id], onDelete: Cascade)
@@ -72,4 +74,18 @@ enum TaskComplexity {
   LOW
   MEDIUM
   HIGH
+}
+
+enum SprintStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
 }
