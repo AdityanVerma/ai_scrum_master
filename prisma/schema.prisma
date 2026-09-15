@@ -35,6 +35,9 @@ model SprintTask {
   sprintId        String
   sprint          Sprint           @relation(fields: [sprintId], references: [id], onDelete: Cascade)
 
+  assignedToId    String?
+  assignedTo      TeamMember?      @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
   skills          TaskSkill[]
   dependencies    TaskDependency[] @relation("TaskDependencies")
   dependedOnBy    TaskDependency[] @relation("TaskDependents")
@@ -51,6 +54,7 @@ model TeamMember {
   role      String
 
   skills    TeamMemberSkill[]
+  assignedTasks SprintTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

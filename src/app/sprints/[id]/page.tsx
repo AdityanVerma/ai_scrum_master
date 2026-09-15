@@ -10,10 +10,22 @@ type Task = {
     description: string;
     complexity: "LOW" | "MEDIUM" | "HIGH";
     estimatedHours: number;
+
+    assignedTo: {
+        id: string;
+        name: string;
+        role: string;
+        skills: {
+            id: string;
+            skill: string;
+        }[];
+    } | null;
+
     skills: {
         id: string;
         skill: string;
     }[];
+
     dependencies: {
         id: string;
         taskId: string;
@@ -41,11 +53,42 @@ type SprintProgress = {
     progressPercentage: number;
 };
 
+type AssignmentRecommendation = {
+    recommendedMember: {
+        memberId: string;
+        name: string;
+        role: string;
+        matchedSkills: string[];
+        missingSkills: string[];
+        matchPercentage: number;
+    } | null;
+    candidates: {
+        memberId: string;
+        name: string;
+        role: string;
+        matchedSkills: string[];
+        missingSkills: string[];
+        matchPercentage: number;
+    }[];
+};
+
+type TeamMember = {
+    id: string;
+    name: string;
+    role: string;
+};
+
 export default function SprintDetailPage() {
     const [sprint, setSprint] = useState<Sprint | null>(null);
     const [progress, setProgress] = useState<SprintProgress | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [recommendations, setRecommendations] = useState<
+        Record<string, AssignmentRecommendation>
+    >({});
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadingRecommendation, setLoadingRecommendation] =
+        useState<string | null>(null);
     const [isActivating, setIsActivating] = useState(false);
 
     useEffect(() => {
@@ -94,6 +137,31 @@ export default function SprintDetailPage() {
         fetchSprint();
     }, []);
 
+    useEffect(() => {
+        async function fetchTeamMembers() {
+            try {
+                const response = await fetch("/api/team-members");
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.error || "Failed to fetch team members.",
+                    );
+                }
+
+                setTeamMembers(result.data);
+            } catch (error) {
+                console.error(
+                    "Failed to fetch team members:",
+                    error,
+                );
+            }
+        }
+
+        fetchTeamMembers();
+    }, []);
+
+    // Handle Active Sprint
     async function handleActivateSprint() {
         if (!sprint) return;
 
@@ -137,6 +205,7 @@ export default function SprintDetailPage() {
         }
     }
 
+    // Handle Change in Task Status
     async function handleTaskStatusChange(
         taskId: string,
         status: Task["status"],
@@ -200,6 +269,164 @@ export default function SprintDetailPage() {
                 error instanceof Error
                     ? error.message
                     : "Failed to update task status.",
+            );
+        }
+    }
+
+    async function handleRecommendAssignee(taskId: string) {
+        try {
+            setLoadingRecommendation(taskId);
+            setError(null);
+
+            const response = await fetch(
+                "/api/assignment/task-recommendation",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ taskId }),
+                },
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    result.error ||
+                    "Failed to get assignment recommendation.",
+                );
+            }
+
+            setRecommendations((current) => ({
+                ...current,
+                [taskId]: result.data,
+            }));
+        } catch (error) {
+            console.error(
+                "Failed to get assignment recommendation:",
+                error,
+            );
+
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to get assignment recommendation.",
+            );
+        } finally {
+            setLoadingRecommendation(null);
+        }
+    }
+
+    async function handleAssignRecommended(
+        taskId: string,
+        memberId: string,
+    ) {
+        if (!sprint) return;
+
+        try {
+            setError(null);
+
+            const response = await fetch(
+                `/api/sprints/${sprint.id}/tasks/${taskId}/assignment`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ memberId }),
+                },
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    result.error || "Failed to assign task.",
+                );
+            }
+
+            setSprint((currentSprint) =>
+                currentSprint
+                    ? {
+                        ...currentSprint,
+                        tasks: currentSprint.tasks.map((task) =>
+                            task.id === taskId
+                                ? {
+                                    ...task,
+                                    assignedTo:
+                                        result.data.assignedTo,
+                                }
+                                : task,
+                        ),
+                    }
+                    : currentSprint,
+            );
+        } catch (error) {
+            console.error("Failed to assign task:", error);
+
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to assign task.",
+            );
+        }
+    }
+
+    async function handleManualAssignment(
+        taskId: string,
+        memberId: string,
+    ) {
+        if (!sprint) return;
+
+        try {
+            setError(null);
+
+            const response = await fetch(
+                `/api/sprints/${sprint.id}/tasks/${taskId}/assignment`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ memberId }),
+                },
+            );
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    result.error || "Failed to assign task.",
+                );
+            }
+
+            setSprint((currentSprint) =>
+                currentSprint
+                    ? {
+                        ...currentSprint,
+                        tasks: currentSprint.tasks.map((task) =>
+                            task.id === taskId
+                                ? {
+                                    ...task,
+                                    assignedTo:
+                                        result.data.assignedTo,
+                                }
+                                : task,
+                        ),
+                    }
+                    : currentSprint,
+            );
+        } catch (error) {
+            console.error(
+                "Failed to manually assign task:",
+                error,
+            );
+
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to assign task.",
             );
         }
     }
@@ -385,6 +612,85 @@ export default function SprintDetailPage() {
                                             .join(", ")}
                                     </p>
                                 </div>
+
+                                <div className="mt-4">
+                                    <p className="text-sm font-medium">
+                                        Assigned To
+                                    </p>
+
+                                    <p className="mt-1 text-sm text-[#5F6B64]">
+                                        {task.assignedTo
+                                            ? `${task.assignedTo.name} (${task.assignedTo.role})`
+                                            : "Unassigned"}
+                                    </p>
+                                </div>
+
+                                <div className="mt-3">
+                                    <label
+                                        htmlFor={`assign-${task.id}`}
+                                        className="text-sm font-medium"
+                                    >
+                                        Assign Manually
+                                    </label>
+
+                                    <select
+                                        id={`assign-${task.id}`}
+                                        value={task.assignedTo?.id ?? ""}
+                                        onChange={(event) => {
+                                            const memberId = event.target.value;
+
+                                            if (memberId) {
+                                                handleManualAssignment(task.id, memberId);
+                                            }
+                                        }}
+                                        className="mt-1 w-full rounded-xl border border-[#DDE8E1] bg-white px-3 py-2 text-sm outline-none"
+                                    >
+                                        <option value="">Select team member</option>
+
+                                        {teamMembers.map((member) => (
+                                            <option key={member.id} value={member.id}>
+                                                {member.name} ({member.role})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleRecommendAssignee(task.id)}
+                                    disabled={loadingRecommendation === task.id}
+                                    className="mt-3 rounded-xl border border-[#DDE8E1] px-3 py-2 text-sm font-medium transition hover:bg-[#E8F6EF] disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {loadingRecommendation === task.id
+                                        ? "Finding..."
+                                        : "Recommend Assignee"}
+                                </button>
+
+                                {recommendations[task.id]?.recommendedMember && (
+                                    <div className="mt-3 rounded-xl bg-[#F8F7F2] p-4">
+                                        <p className="text-sm font-medium">
+                                            Recommended Assignee
+                                        </p>
+
+                                        <p className="mt-1 text-sm">
+                                            {recommendations[task.id].recommendedMember?.name}
+                                            {" "}
+                                            ({recommendations[task.id].recommendedMember?.role})
+                                        </p>
+
+                                        <p className="mt-1 text-sm text-[#5F6B64]">
+                                            Skill Match:{" "}
+                                            {recommendations[task.id].recommendedMember?.matchPercentage}%
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            className="mt-3 rounded-xl bg-[#8CC9A8] px-3 py-2 text-sm font-medium text-[#1F2924] transition hover:opacity-90"
+                                        >
+                                            Assign
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="mt-4">
                                     <p className="text-sm font-medium">
