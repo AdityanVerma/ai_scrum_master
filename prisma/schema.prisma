@@ -45,6 +45,29 @@ model SprintTask {
   @@unique([sprintId, taskId])
 }
 
+model TeamMember {
+  id        String   @id @default(cuid())
+  name      String
+  role      String
+
+  skills    TeamMemberSkill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamMemberSkill {
+  id         String     @id @default(cuid())
+  skill      String
+
+  memberId   String
+  member     TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime   @default(now())
+
+  @@unique([memberId, skill])
+}
+
 model TaskSkill {
   id          String     @id @default(cuid())
   skill       String
