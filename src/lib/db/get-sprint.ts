@@ -7,8 +7,16 @@ export async function getSprint(id: string) {
       tasks: {
         include: {
           skills: true,
-          dependencies: true,
-          dependedOnBy: true,
+          dependencies: {
+            include: {
+              dependsOn: true,
+            },
+          },
+          dependedOnBy: {
+            include: {
+              task: true,
+            },
+          },
           assignedTo: {
             include: {
               skills: true,

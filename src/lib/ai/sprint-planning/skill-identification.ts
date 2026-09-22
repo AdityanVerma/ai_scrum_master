@@ -107,7 +107,13 @@ Return ONLY valid JSON in exactly this structure:
     throw new Error('Skill identification returned an empty response.');
   }
 
-  const parsedResult = JSON.parse(content);
+  const cleanedContent = content
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  const parsedResult = JSON.parse(cleanedContent);
 
   return skillIdentificationSchema.parse(parsedResult);
 }

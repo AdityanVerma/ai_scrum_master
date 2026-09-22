@@ -31,6 +31,11 @@ type Task = {
         id: string;
         taskId: string;
         dependsOnTaskId: string;
+        dependsOn: {
+            id: string;
+            taskId: string;
+            title: string;
+        };
     }[];
 };
 
@@ -274,6 +279,7 @@ export default function SprintDetailPage() {
         }
     }
 
+    // Assign to Recommended Member
     async function handleRecommendAssignee(taskId: string) {
         try {
             setLoadingRecommendation(taskId);
@@ -685,6 +691,17 @@ export default function SprintDetailPage() {
 
                                     <button
                                         type="button"
+                                        onClick={() => {
+                                            const recommendedMember =
+                                                recommendations[task.id]?.recommendedMember;
+
+                                            if (recommendedMember) {
+                                                handleAssignRecommended(
+                                                    task.id,
+                                                    recommendedMember.memberId,
+                                                );
+                                            }
+                                        }}
                                         className="mt-3 rounded-xl bg-[#8CC9A8] px-3 py-2 text-sm font-medium text-[#1F2924] transition hover:opacity-90"
                                     >
                                         Assign
@@ -712,7 +729,7 @@ export default function SprintDetailPage() {
                                         {task.dependencies
                                             .map(
                                                 (dependency) =>
-                                                    dependency.dependsOnTaskId,
+                                                    `${dependency.dependsOn.taskId} - ${dependency.dependsOn.title}`,
                                             )
                                             .join(", ")}
                                     </p>
