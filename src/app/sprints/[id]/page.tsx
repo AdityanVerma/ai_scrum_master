@@ -78,6 +78,23 @@ type AssignmentRecommendation = {
     }[];
 };
 
+type Document = {
+    id: string;
+    title: string;
+    type: string;
+    sourceType: "DOCUMENT" | "LINK" | "UPLOAD";
+    content: string | null;
+    url: string | null;
+    source: "MANUAL" | "AI_GENERATED";
+    createdAt: string;
+    tags: {
+        tag: {
+            id: string;
+            name: string;
+        };
+    }[];
+};
+
 type TeamMember = {
     id: string;
     name: string;
@@ -85,16 +102,28 @@ type TeamMember = {
 };
 
 export default function SprintDetailPage() {
+    // States
     const [sprint, setSprint] = useState<Sprint | null>(null);
     const [progress, setProgress] = useState<SprintProgress | null>(null);
-    const [recommendations, setRecommendations] = useState<
-        Record<string, AssignmentRecommendation>
-    >({});
+    const [recommendations, setRecommendations] = useState<Record<string, AssignmentRecommendation>>({});
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+    // Dcocumentation States
+    const [documents, setDocuments] = useState<Document[]>([]);
+    const [isDocumentFormOpen, setIsDocumentFormOpen] = useState(false);
+    const [documentTitle, setDocumentTitle] = useState("");
+    const [documentType, setDocumentType] = useState("");
+    const [documentSourceType, setDocumentSourceType] = useState<"DOCUMENT" | "LINK" | "UPLOAD">("DOCUMENT");
+    const [documentContent, setDocumentContent] = useState("");
+    const [documentUrl, setDocumentUrl] = useState("");
+    const [documentFile, setDocumentFile] = useState<File | null>(null);
+    const [documentTags, setDocumentTags] = useState("");
+    const [isCreatingDocument, setIsCreatingDocument] = useState(false);
+
+    // Loading & Errors
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [loadingRecommendation, setLoadingRecommendation] =
-        useState<string | null>(null);
+    const [loadingRecommendation, setLoadingRecommendation] = useState<string | null>(null);
     const [isActivating, setIsActivating] = useState(false);
 
     useEffect(() => {
@@ -103,14 +132,16 @@ export default function SprintDetailPage() {
                 const sprintId =
                     window.location.pathname.split("/").pop();
 
-                const [sprintResponse, progressResponse] =
+                const [sprintResponse, progressResponse, documentsResponse] =
                     await Promise.all([
                         fetch(`/api/sprints/${sprintId}`),
                         fetch(`/api/sprints/${sprintId}/progress`),
+                        fetch(`/api/documents?sprintId=${sprintId}`),
                     ]);
 
                 const sprintResult = await sprintResponse.json();
                 const progressResult = await progressResponse.json();
+                const documentsResult = await documentsResponse.json();
 
                 if (!sprintResponse.ok) {
                     throw new Error(
@@ -125,8 +156,16 @@ export default function SprintDetailPage() {
                     );
                 }
 
+                if (!documentsResponse.ok) {
+                    throw new Error(
+                        documentsResult.error ||
+                        "Failed to fetch sprint documents.",
+                    );
+                }
+
                 setSprint(sprintResult.data);
                 setProgress(progressResult.data);
+                setDocuments(documentsResult.data);
             } catch (error) {
                 console.error("Failed to fetch sprint:", error);
 
@@ -279,7 +318,7 @@ export default function SprintDetailPage() {
         }
     }
 
-    // Assign to Recommended Member
+    // Handle Fetching Recommended Assignee
     async function handleRecommendAssignee(taskId: string) {
         try {
             setLoadingRecommendation(taskId);
@@ -325,6 +364,7 @@ export default function SprintDetailPage() {
         }
     }
 
+    // Handle Assigning Recommended Assignee
     async function handleAssignRecommended(
         taskId: string,
         memberId: string,
@@ -380,6 +420,7 @@ export default function SprintDetailPage() {
         }
     }
 
+    // Handle Manual Assignment
     async function handleManualAssignment(
         taskId: string,
         memberId: string,
@@ -437,6 +478,81 @@ export default function SprintDetailPage() {
             );
         }
     }
+
+    // Handle Create Document
+    const handleCreateDocument = async (
+        event: React.FormEvent<HTMLFormElement>,
+    ) => {
+        event.preventDefault();
+
+        if (!sprint) {
+            alert("Sprint details are not available.");
+            return;
+        }
+
+        if (documentSourceType === "UPLOAD" && !documentFile) {
+            alert("Please select a document to upload.");
+            return;
+        }
+
+        setIsCreatingDocument(true);
+
+        try {
+            const formData = new FormData();
+
+            formData.append("title", documentTitle);
+            formData.append("type", documentType);
+            formData.append("sourceType", documentSourceType);
+            formData.append("sprintId", sprint.id);
+            formData.append("tagNames", documentTags);
+
+            if (documentSourceType === "DOCUMENT") {
+                formData.append("content", documentContent);
+            }
+
+            if (documentSourceType === "LINK") {
+                formData.append("url", documentUrl);
+            }
+
+            if (documentSourceType === "UPLOAD" && documentFile) {
+                formData.append("file", documentFile);
+            }
+
+            const response = await fetch("/api/documents", {
+                method: "POST",
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    result.error || "Failed to create document.",
+                );
+            }
+
+            setDocuments((current) => [result.data, ...current]);
+
+            setDocumentTitle("");
+            setDocumentType("");
+            setDocumentSourceType("DOCUMENT");
+            setDocumentContent("");
+            setDocumentUrl("");
+            setDocumentTags("");
+            setDocumentFile(null);
+            setIsDocumentFormOpen(false);
+        } catch (error) {
+            console.error("Failed to create document:", error);
+
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to create document.",
+            );
+        } finally {
+            setIsCreatingDocument(false);
+        }
+    };
 
     if (isLoading) {
         return <main className="p-8">Loading sprint...</main>;
@@ -562,6 +678,276 @@ export default function SprintDetailPage() {
                 <h2 className="text-2xl font-semibold">
                     Tasks
                 </h2>
+
+                {/* Documentation Section */}
+                <div className="mt-10">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h2 className="text-2xl font-semibold">
+                            Documentation
+                        </h2>
+
+                        <div className="flex items-center gap-3">
+                            <span className="rounded-full bg-[#E8F6EF] px-3 py-1 text-sm font-medium">
+                                {documents.length}{" "}
+                                {documents.length === 1 ? "Document" : "Documents"}
+                            </span>
+
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setIsDocumentFormOpen((current) => !current)
+                                }
+                                className="rounded-xl bg-[#8CC9A8] px-4 py-2 text-sm font-medium text-[#1F2924] transition hover:opacity-90"
+                            >
+                                Add Document
+                            </button>
+                        </div>
+                    </div>
+
+                    {isDocumentFormOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                            <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <h2 className="text-xl font-semibold text-[#1F2924]">
+                                        Add Document
+                                    </h2>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsDocumentFormOpen(false)}
+                                        className="text-2xl text-gray-500 transition hover:text-gray-800"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+
+                                <p className="mb-6 text-sm text-gray-500">
+                                    Add documentation or an external reference to this sprint.
+                                </p>
+
+                                <form
+                                    onSubmit={handleCreateDocument}
+                                    className="space-y-5"
+                                >
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                            Document Title
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            value={documentTitle}
+                                            onChange={(event) =>
+                                                setDocumentTitle(event.target.value)
+                                            }
+                                            placeholder="e.g. Sprint Requirements"
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                            Document Type
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            value={documentType}
+                                            onChange={(event) =>
+                                                setDocumentType(event.target.value)
+                                            }
+                                            placeholder="e.g. Requirements, Design, Meeting Notes"
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                            Source Type
+                                        </label>
+
+                                        <select
+                                            value={documentSourceType}
+                                            onChange={(event) =>
+                                                setDocumentSourceType(
+                                                    event.target.value as
+                                                    | "DOCUMENT"
+                                                    | "LINK"
+                                                    | "UPLOAD",
+                                                )
+                                            }
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
+                                        >
+                                            <option value="DOCUMENT">Document Content</option>
+                                            <option value="LINK">External Link</option>
+                                            <option value="UPLOAD">Upload Document</option>
+                                        </select>
+                                    </div>
+
+                                    {documentSourceType === "DOCUMENT" ? (
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                                Content
+                                            </label>
+
+                                            <textarea
+                                                value={documentContent}
+                                                onChange={(event) =>
+                                                    setDocumentContent(event.target.value)
+                                                }
+                                                placeholder="Write or paste the document content..."
+                                                rows={6}
+                                                className="w-full resize-y rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
+                                                required
+                                            />
+                                        </div>
+                                    ) : documentSourceType === "LINK" ? (
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                                Document URL
+                                            </label>
+
+                                            <input
+                                                type="url"
+                                                value={documentUrl}
+                                                onChange={(event) =>
+                                                    setDocumentUrl(event.target.value)
+                                                }
+                                                placeholder="https://example.com/document"
+                                                className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
+                                                required
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                                Upload Document
+                                            </label>
+
+                                            <input
+                                                type="file"
+                                                accept=".pdf,.doc,.docx,.txt,.md"
+                                                onChange={(event) =>
+                                                    setDocumentFile(event.target.files?.[0] ?? null)
+                                                }
+                                                className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#E8F6EF] file:px-4 file:py-2 file:text-sm file:font-medium"
+                                                required
+                                            />
+
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Supported formats: PDF, DOC, DOCX, TXT, and Markdown.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
+                                            Tags
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            value={documentTags}
+                                            onChange={(event) =>
+                                                setDocumentTags(event.target.value)
+                                            }
+                                            placeholder="frontend, api, planning"
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
+                                        />
+
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Separate multiple tags using commas.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex justify-end gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsDocumentFormOpen(false)}
+                                            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button
+                                            type="submit"
+                                            disabled={isCreatingDocument}
+                                            className="rounded-xl bg-[#8CC9A8] px-5 py-2.5 text-sm font-medium text-[#1F2924] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {isCreatingDocument ? "Saving..." : "Save Document"}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {documents.length === 0 ? (
+                        <div className="mt-5 rounded-2xl border border-dashed border-[#DDE8E1] bg-white p-6 text-sm text-[#5F6B64]">
+                            No documentation has been added to this sprint yet.
+                        </div>
+                    ) : (
+                        <div className="mt-5 space-y-4">
+                            {documents.map((document) => (
+                                <article
+                                    key={document.id}
+                                    className="rounded-2xl border border-[#DDE8E1] bg-white p-6 shadow-sm"
+                                >
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <h3 className="text-lg font-semibold">
+                                                {document.title}
+                                            </h3>
+
+                                            <p className="mt-1 text-sm text-[#5F6B64]">
+                                                {document.type}
+                                            </p>
+                                        </div>
+
+                                        <span className="rounded-full bg-[#E8F6EF] px-3 py-1 text-xs font-medium">
+                                            {document.sourceType}
+                                        </span>
+                                    </div>
+
+                                    {document.sourceType === "DOCUMENT" &&
+                                        document.content && (
+                                            <p className="mt-4 whitespace-pre-wrap text-sm text-[#5F6B64]">
+                                                {document.content}
+                                            </p>
+                                        )}
+
+                                    {document.sourceType === "LINK" &&
+                                        document.url && (
+                                            <a
+                                                href={document.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="mt-4 block break-all text-sm text-[#397A59] underline"
+                                            >
+                                                {document.url}
+                                            </a>
+                                        )}
+
+                                    {document.tags.length > 0 && (
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            {document.tags.map(({ tag }) => (
+                                                <span
+                                                    key={tag.id}
+                                                    className="rounded-full bg-[#F8F7F2] px-3 py-1 text-xs text-[#5F6B64]"
+                                                >
+                                                    #{tag.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </article>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
 
                 <div className="mt-5 space-y-4">
                     {sprint.tasks.map((task) => (
@@ -739,6 +1125,6 @@ export default function SprintDetailPage() {
                     ))}
                 </div>
             </section>
-        </PageContainer>
+        </PageContainer >
     );
 }
