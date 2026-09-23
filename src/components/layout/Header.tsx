@@ -8,6 +8,7 @@ const navigation = [
     { name: "Plan Sprint", href: "/sprint-planning" },
     { name: "Sprints", href: "/sprints" },
     { name: "Team", href: "/team-members" },
+    { name: "Documentation", href: "/documentation", }
 ];
 
 export default function Header() {
@@ -29,8 +30,8 @@ export default function Header() {
                             key={item.href}
                             href={item.href}
                             className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition ${pathname === item.href
-                                    ? "bg-[#8CC9A8] text-[#1F2924]"
-                                    : "text-[#5F6B64] hover:bg-[#E8F6EF] hover:text-[#1F2924]"
+                                ? "bg-[#8CC9A8] text-[#1F2924]"
+                                : "text-[#5F6B64] hover:bg-[#E8F6EF] hover:text-[#1F2924]"
                                 }`}
                         >
                             {item.name}
