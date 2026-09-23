@@ -14,11 +14,14 @@ model Sprint {
   startDate           DateTime
   endDate             DateTime
   totalEstimatedHours Float
+  status              SprintStatus @default(PLANNED)
 
   tasks               SprintTask[]
+  documents           Document[]
+  functions           SprintFunction[]
 
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 }
 
 model SprintTask {
@@ -29,9 +32,13 @@ model SprintTask {
 
   complexity      TaskComplexity
   estimatedHours  Float
+  status          TaskStatus       @default(TODO)
 
   sprintId        String
   sprint          Sprint           @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  assignedToId    String?
+  assignedTo      TeamMember?      @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
 
   skills          TaskSkill[]
   dependencies    TaskDependency[] @relation("TaskDependencies")
@@ -41,6 +48,46 @@ model SprintTask {
   updatedAt       DateTime         @updatedAt
 
   @@unique([sprintId, taskId])
+}
+
+model SprintFunction {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+
+  sprintId    String
+  sprint      Sprint   @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  documents   DocumentFunctionRelation[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sprintId, name])
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  name      String
+  role      String
+
+  skills    TeamMemberSkill[]
+  assignedTasks SprintTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamMemberSkill {
+  id         String     @id @default(cuid())
+  skill      String
+
+  memberId   String
+  member     TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime   @default(now())
+
+  @@unique([memberId, skill])
 }
 
 model TaskSkill {
@@ -68,8 +115,92 @@ model TaskDependency {
   @@unique([taskId, dependsOnTaskId])
 }
 
+model Document {
+  id          String   @id @default(cuid())
+  title       String
+  type        String
+
+  sourceType  DocumentSourceType @default(DOCUMENT)
+  content     String?
+  url         String?
+
+  source      DocumentSource @default(MANUAL)
+
+  sprintId    String?
+  sprint      Sprint? @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+
+  tags        DocumentTagRelation[]
+  functions   DocumentFunctionRelation[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DocumentTag {
+  id        String     @id @default(cuid())
+  name      String
+
+  documents DocumentTagRelation[]
+
+  createdAt DateTime   @default(now())
+
+  @@unique([name])
+}
+
+model DocumentTagRelation {
+  id         String      @id @default(cuid())
+
+  documentId String
+  document   Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  tagId      String
+  tag        DocumentTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime    @default(now())
+
+  @@unique([documentId, tagId])
+}
+
+model DocumentFunctionRelation {
+  id         String         @id @default(cuid())
+
+  documentId String
+  document   Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  functionId String
+  function   SprintFunction @relation(fields: [functionId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime       @default(now())
+
+  @@unique([documentId, functionId])
+}
+
 enum TaskComplexity {
   LOW
   MEDIUM
   HIGH
+}
+
+enum SprintStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+enum DocumentSource {
+  MANUAL
+  AI_GENERATED
+}
+
+enum DocumentSourceType {
+  DOCUMENT
+  LINK
 }

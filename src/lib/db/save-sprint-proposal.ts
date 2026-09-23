@@ -10,6 +10,12 @@ export async function saveSprintProposal(proposal: SprintProposal) {
       endDate: new Date(proposal.duration.endDate),
       totalEstimatedHours: proposal.totalEstimatedHours,
 
+      functions: {
+        create: proposal.functions.map((functionName) => ({
+          name: functionName,
+        })),
+      },
+
       tasks: {
         create: proposal.tasks.map((task) => ({
           taskId: task.id,

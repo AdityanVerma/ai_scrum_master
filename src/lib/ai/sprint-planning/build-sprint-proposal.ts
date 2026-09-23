@@ -11,6 +11,7 @@ export type SprintProposalTask = {
 export type SprintProposal = {
   name: string;
   goal: string;
+  functions: string[];
   duration: {
     startDate: string;
     endDate: string;
@@ -99,6 +100,7 @@ export function buildSprintProposal({
   return {
     name: sprintInput.name,
     goal: sprintInput.goal,
+    functions: sprintInput.functions,
     duration: sprintInput.duration,
     tasks: proposalTasks,
     totalEstimatedHours,
