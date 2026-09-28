@@ -9,6 +9,7 @@ type Task = {
     estimatedMins: number;
     order: number;
     status: string;
+    priority: string;
     parentTaskId: string | null;
 };
 
@@ -37,11 +38,13 @@ export default function TasklistPage() {
     const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(
         null,
     );
+    const [taskPriority, setTaskPriority] = useState("MEDIUM");
     const [subtaskTitle, setSubtaskTitle] = useState("");
     const [subtaskEstimatedMins, setSubtaskEstimatedMins] = useState("60");
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [editTaskTitle, setEditTaskTitle] = useState("");
     const [editTaskCategory, setEditTaskCategory] = useState("Development");
+    const [editTaskPriority, setEditTaskPriority] = useState("MEDIUM");
     const [editTaskEstimatedMins, setEditTaskEstimatedMins] = useState("60");
     const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
     const [editSubtaskTitle, setEditSubtaskTitle] = useState("");
@@ -212,8 +215,8 @@ export default function TasklistPage() {
 
                     <div
                         className={`mt-4 rounded-lg px-4 py-3 text-sm ${isOverCapacity
-                                ? "bg-red-50 text-red-700"
-                                : "bg-emerald-50 text-emerald-700"
+                            ? "bg-red-50 text-red-700"
+                            : "bg-emerald-50 text-emerald-700"
                             }`}
                     >
                         {isOverCapacity ? (
@@ -252,12 +255,11 @@ export default function TasklistPage() {
                                             body: JSON.stringify({
                                                 title: taskTitle,
                                                 category: taskCategory,
-                                                estimatedMins:
-                                                    Number(taskEstimatedMins),
+                                                estimatedMins: Number(taskEstimatedMins),
+                                                priority: taskPriority,
                                                 order:
                                                     tasklist.tasks.filter(
-                                                        (task) =>
-                                                            !task.parentTaskId,
+                                                        (task) => !task.parentTaskId,
                                                     ).length + 1,
                                             }),
                                         },
@@ -282,6 +284,7 @@ export default function TasklistPage() {
 
                                     setTaskTitle("");
                                     setTaskCategory("Development");
+                                    setTaskPriority("MEDIUM");
                                     setTaskEstimatedMins("60");
                                     setIsAddingTask(false);
                                 } catch (error) {
@@ -294,7 +297,7 @@ export default function TasklistPage() {
                             }}
                             className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4"
                         >
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-4">
                                 <input
                                     type="text"
                                     placeholder="Task title"
@@ -324,6 +327,18 @@ export default function TasklistPage() {
                                     <option value="Non-sprint">
                                         Non-sprint
                                     </option>
+                                </select>
+
+                                <select
+                                    value={taskPriority}
+                                    onChange={(event) =>
+                                        setTaskPriority(event.target.value)
+                                    }
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                >
+                                    <option value="HIGH">High Priority</option>
+                                    <option value="MEDIUM">Medium Priority</option>
+                                    <option value="LOW">Low Priority</option>
                                 </select>
 
                                 <input
@@ -392,9 +407,22 @@ export default function TasklistPage() {
                                         >
                                             <div className="flex items-start justify-between">
                                                 <div>
-                                                    <p className="text-xs font-medium text-green-700">
-                                                        {task.category}
-                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-xs font-medium text-green-700">
+                                                            {task.category}
+                                                        </p>
+
+                                                        <span
+                                                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.priority === "HIGH"
+                                                                ? "bg-red-50 text-red-600"
+                                                                : task.priority === "LOW"
+                                                                    ? "bg-gray-100 text-gray-500"
+                                                                    : "bg-yellow-50 text-yellow-600"
+                                                                }`}
+                                                        >
+                                                            {task.priority}
+                                                        </span>
+                                                    </div>
 
                                                     <h3 className="mt-1 font-medium text-gray-900">
                                                         {task.order}. {task.title}
@@ -462,9 +490,8 @@ export default function TasklistPage() {
                                                             setEditingTaskId(task.id);
                                                             setEditTaskTitle(task.title);
                                                             setEditTaskCategory(task.category);
-                                                            setEditTaskEstimatedMins(
-                                                                String(task.estimatedMins),
-                                                            );
+                                                            setEditTaskPriority(task.priority);
+                                                            setEditTaskEstimatedMins(String(task.estimatedMins));
                                                         }}
                                                         className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
                                                     >
@@ -546,6 +573,24 @@ export default function TasklistPage() {
                                                             <option value="Non-sprint">Non-sprint</option>
                                                         </select>
 
+                                                        <div>
+                                                            <label className="mb-1 block text-xs font-medium text-gray-600">
+                                                                Priority
+                                                            </label>
+
+                                                            <select
+                                                                value={editTaskPriority}
+                                                                onChange={(event) =>
+                                                                    setEditTaskPriority(event.target.value)
+                                                                }
+                                                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                                            >
+                                                                <option value="HIGH">High Priority</option>
+                                                                <option value="MEDIUM">Medium Priority</option>
+                                                                <option value="LOW">Low Priority</option>
+                                                            </select>
+                                                        </div>
+
                                                         <input
                                                             type="number"
                                                             min="1"
@@ -577,6 +622,8 @@ export default function TasklistPage() {
                                                                                 title: editTaskTitle,
                                                                                 category: editTaskCategory,
                                                                                 estimatedMins: Number(editTaskEstimatedMins),
+                                                                                status: task.status,
+                                                                                priority: editTaskPriority,
                                                                             }),
                                                                         },
                                                                     );

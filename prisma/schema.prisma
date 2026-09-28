@@ -177,13 +177,16 @@ model DocumentFunctionRelation {
 }
 
 model DailyTasklist {
-  id String @id @default(cuid())
+  id        String @id @default(cuid())
 
-  memberId String
-  member   TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
-  date   DateTime
-  status String   @default("DRAFT")
+  date      DateTime
+  status    String @default("DRAFT")
+
+  sodCapturedAt DateTime?
+  eodCapturedAt DateTime?
 
   tasks TasklistTask[]
 
@@ -203,6 +206,7 @@ model TasklistTask {
   estimatedMins Int
   order         Int
   status        String @default("PENDING")
+  priority      String @default("MEDIUM")
 
   parentTaskId String?
   parentTask   TasklistTask?  @relation("TaskSubtasks", fields: [parentTaskId], references: [id])

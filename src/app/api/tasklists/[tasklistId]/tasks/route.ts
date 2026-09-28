@@ -9,7 +9,8 @@ export async function POST(
     const { tasklistId } = await params;
     const body = await request.json();
 
-    const { title, category, estimatedMins, order, parentTaskId } = body;
+    const { title, category, estimatedMins, order, parentTaskId, priority } =
+      body;
 
     if (!title || !category || !estimatedMins || order === undefined) {
       return NextResponse.json(
@@ -41,6 +42,7 @@ export async function POST(
         estimatedMins,
         order,
         parentTaskId: parentTaskId || null,
+        ...(priority !== undefined && { priority }),
       },
     });
 
@@ -117,7 +119,7 @@ export async function PUT(
     const { tasklistId } = await params;
     const body = await request.json();
 
-    const { taskId, title, category, estimatedMins, status } = body;
+    const { taskId, title, category, estimatedMins, status, priority } = body;
 
     if (!taskId) {
       return NextResponse.json(
@@ -148,6 +150,7 @@ export async function PUT(
           estimatedMins: Number(estimatedMins),
         }),
         ...(status !== undefined && { status }),
+        ...(priority !== undefined && { priority }),
       },
     });
 
