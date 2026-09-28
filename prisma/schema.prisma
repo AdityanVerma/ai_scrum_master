@@ -189,6 +189,7 @@ model DailyTasklist {
   eodCapturedAt DateTime?
 
   tasks TasklistTask[]
+  snapshots TasklistSnapshot[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -218,6 +219,21 @@ model TasklistTask {
   updatedAt DateTime @updatedAt
 
   @@index([tasklistId])
+}
+
+model TasklistSnapshot {
+  id        String @id @default(cuid())
+
+  tasklistId String
+  tasklist   DailyTasklist @relation(fields: [tasklistId], references: [id], onDelete: Cascade)
+
+  type      String
+  capturedAt DateTime @default(now())
+
+  tasks     Json
+
+  @@index([tasklistId])
+  @@index([tasklistId, type])
 }
 
 enum TaskComplexity {

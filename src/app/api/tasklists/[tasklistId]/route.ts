@@ -27,6 +27,9 @@ export async function PATCH(
 
     const tasklist = await prisma.dailyTasklist.findUnique({
       where: { id: tasklistId },
+      include: {
+        snapshots: true,
+      },
     });
 
     if (!tasklist) {
@@ -36,12 +39,44 @@ export async function PATCH(
       );
     }
 
-    const updatedTasklist = await prisma.dailyTasklist.update({
-      where: { id: tasklistId },
-      data:
-        action === 'SOD'
-          ? { sodCapturedAt: new Date() }
-          : { eodCapturedAt: new Date() },
+    if (action === 'SOD' && tasklist.sodCapturedAt) {
+      return NextResponse.json(
+        { error: 'SOD has already been captured for this tasklist.' },
+        { status: 409 },
+      );
+    }
+
+    if (action === 'EOD' && tasklist.eodCapturedAt) {
+      return NextResponse.json(
+        { error: 'EOD has already been captured for this tasklist.' },
+        { status: 409 },
+      );
+    }
+
+    const updatedTasklist = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      const updated = await tx.dailyTasklist.update({
+        where: { id: tasklistId },
+        data:
+          action === 'SOD' ? { sodCapturedAt: now } : { eodCapturedAt: now },
+      });
+
+      const tasks = await tx.tasklistTask.findMany({
+        where: { tasklistId },
+        orderBy: { order: 'asc' },
+      });
+
+      await tx.tasklistSnapshot.create({
+        data: {
+          tasklistId,
+          type: action,
+          capturedAt: now,
+          tasks,
+        },
+      });
+
+      return updated;
     });
 
     return NextResponse.json({

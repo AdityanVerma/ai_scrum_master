@@ -17,6 +17,8 @@ type Tasklist = {
     id: string;
     date: string;
     status: string;
+    sodCapturedAt: string | null;
+    eodCapturedAt: string | null;
     member: {
         id: string;
         name: string;
@@ -31,6 +33,8 @@ export default function TasklistPage() {
     const [tasklist, setTasklist] = useState<Tasklist | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAddingTask, setIsAddingTask] = useState(false);
+    const [isCapturingSod, setIsCapturingSod] = useState(false);
+    const [isCapturingEod, setIsCapturingEod] = useState(false);
     const [taskTitle, setTaskTitle] = useState("");
     const [taskCategory, setTaskCategory] = useState("Development");
     const [availableHours, setAvailableHours] = useState("8");
@@ -161,6 +165,26 @@ export default function TasklistPage() {
                         <p className="text-xs text-gray-500">
                             {tasklist.status}
                         </p>
+
+                        <div className="mt-2 flex justify-end gap-2">
+                            <span
+                                className={`rounded-full px-2 py-1 text-xs font-medium ${tasklist.sodCapturedAt
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-gray-100 text-gray-500"
+                                    }`}
+                            >
+                                SOD {tasklist.sodCapturedAt ? "✓" : "—"}
+                            </span>
+
+                            <span
+                                className={`rounded-full px-2 py-1 text-xs font-medium ${tasklist.eodCapturedAt
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-gray-100 text-gray-500"
+                                    }`}
+                            >
+                                EOD {tasklist.eodCapturedAt ? "✓" : "—"}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -203,6 +227,109 @@ export default function TasklistPage() {
                                 {tasklist.tasks.length} tasks
                             </span>
 
+                            {/* SOD - Start of Day button */}
+                            <button
+                                type="button"
+                                disabled={isCapturingSod || !!tasklist.sodCapturedAt}
+                                onClick={async () => {
+                                    try {
+                                        setIsCapturingSod(true);
+
+                                        const response = await fetch(
+                                            `/api/tasklists/${tasklist.id}`,
+                                            {
+                                                method: "PATCH",
+                                                headers: {
+                                                    "Content-Type": "application/json",
+                                                },
+                                                body: JSON.stringify({
+                                                    action: "SOD",
+                                                }),
+                                            },
+                                        );
+
+                                        const result = await response.json();
+
+                                        if (!response.ok) {
+                                            throw new Error(
+                                                result.error || "Failed to capture SOD.",
+                                            );
+                                        }
+
+                                        setTasklist({
+                                            ...tasklist,
+                                            ...result.data,
+                                        });
+
+                                        alert("SOD captured successfully.");
+                                    } catch (error) {
+                                        console.error("Failed to capture SOD:", error);
+                                        alert("Failed to capture SOD.");
+                                    } finally {
+                                        setIsCapturingSod(false);
+                                    }
+                                }}
+                                className="rounded-lg border border-emerald-500 px-4 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                            >
+                                {isCapturingSod
+                                    ? "Capturing..."
+                                    : tasklist.sodCapturedAt
+                                        ? "SOD Captured"
+                                        : "Start Day"}
+                            </button>
+
+                            {/* EOD - End of Day button */}
+                            <button
+                                type="button"
+                                disabled={isCapturingEod || !!tasklist.eodCapturedAt}
+                                onClick={async () => {
+                                    try {
+                                        setIsCapturingEod(true);
+
+                                        const response = await fetch(
+                                            `/api/tasklists/${tasklist.id}`,
+                                            {
+                                                method: "PATCH",
+                                                headers: {
+                                                    "Content-Type": "application/json",
+                                                },
+                                                body: JSON.stringify({
+                                                    action: "EOD",
+                                                }),
+                                            },
+                                        );
+
+                                        const result = await response.json();
+
+                                        if (!response.ok) {
+                                            throw new Error(
+                                                result.error || "Failed to capture EOD.",
+                                            );
+                                        }
+
+                                        setTasklist({
+                                            ...tasklist,
+                                            ...result.data,
+                                        });
+
+                                        alert("EOD captured successfully.");
+                                    } catch (error) {
+                                        console.error("Failed to capture EOD:", error);
+                                        alert("Failed to capture EOD.");
+                                    } finally {
+                                        setIsCapturingEod(false);
+                                    }
+                                }}
+                                className="rounded-lg border border-gray-400 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                {isCapturingEod
+                                    ? "Capturing..."
+                                    : tasklist.eodCapturedAt
+                                        ? "EOD Captured"
+                                        : "End Day"}
+                            </button>
+
+                            {/* Add Task button */}
                             <button
                                 type="button"
                                 onClick={() => setIsAddingTask(true)}
@@ -210,6 +337,7 @@ export default function TasklistPage() {
                             >
                                 + Add Task
                             </button>
+
                         </div>
                     </div>
 
