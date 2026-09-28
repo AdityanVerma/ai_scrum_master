@@ -92,3 +92,47 @@ export async function PATCH(
     );
   }
 }
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ tasklistId: string }> },
+) {
+  try {
+    const { tasklistId } = await params;
+
+    const tasklist = await prisma.dailyTasklist.findUnique({
+      where: { id: tasklistId },
+      include: {
+        snapshots: {
+          orderBy: {
+            capturedAt: 'asc',
+          },
+        },
+      },
+    });
+
+    if (!tasklist) {
+      return NextResponse.json(
+        { error: 'Tasklist not found.' },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: tasklist.id,
+        sodCapturedAt: tasklist.sodCapturedAt,
+        eodCapturedAt: tasklist.eodCapturedAt,
+        snapshots: tasklist.snapshots,
+      },
+    });
+  } catch (error) {
+    console.error('Get tasklist snapshots error:', error);
+
+    return NextResponse.json(
+      { error: 'Failed to fetch tasklist snapshots.' },
+      { status: 500 },
+    );
+  }
+}

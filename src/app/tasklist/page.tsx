@@ -27,6 +27,43 @@ type Tasklist = {
     tasks: Task[];
 };
 
+function compareSnapshots(
+    sodTasks: Task[],
+    eodTasks: Task[],
+) {
+    const sodMap = new Map(
+        sodTasks.map((task) => [task.id, task]),
+    );
+
+    const eodMap = new Map(
+        eodTasks.map((task) => [task.id, task]),
+    );
+
+    const completed = eodTasks.filter((task) => {
+        const sodTask = sodMap.get(task.id);
+
+        return (
+            sodTask &&
+            sodTask.status !== "DONE" &&
+            task.status === "DONE"
+        );
+    });
+
+    const added = eodTasks.filter(
+        (task) => !sodMap.has(task.id),
+    );
+
+    const remaining = eodTasks.filter(
+        (task) => task.status !== "DONE",
+    );
+
+    return {
+        completed,
+        added,
+        remaining,
+    };
+}
+
 const MEMBER_ID = "cmu25c92n000028lxjd5zo173";
 
 export default function TasklistPage() {
@@ -35,6 +72,13 @@ export default function TasklistPage() {
     const [isAddingTask, setIsAddingTask] = useState(false);
     const [isCapturingSod, setIsCapturingSod] = useState(false);
     const [isCapturingEod, setIsCapturingEod] = useState(false);
+    const [snapshots, setSnapshots] = useState<
+        {
+            type: string;
+            capturedAt: string;
+            tasks: Task[];
+        }[]
+    >([]);
     const [taskTitle, setTaskTitle] = useState("");
     const [taskCategory, setTaskCategory] = useState("Development");
     const [availableHours, setAvailableHours] = useState("8");
@@ -73,6 +117,16 @@ export default function TasklistPage() {
                 }
 
                 setTasklist(result.data);
+
+                const snapshotsResponse = await fetch(
+                    `/api/tasklists/${result.data.id}`,
+                );
+
+                const snapshotsResult = await snapshotsResponse.json();
+
+                if (snapshotsResponse.ok) {
+                    setSnapshots(snapshotsResult.data.snapshots);
+                }
             } catch (error) {
                 console.error("Failed to fetch tasklist:", error);
             } finally {
@@ -108,6 +162,30 @@ export default function TasklistPage() {
     const parentTasks = tasklist.tasks.filter(
         (task) => !task.parentTaskId,
     );
+
+    const sodSnapshot = snapshots
+        .filter((snapshot) => snapshot.type === "SOD")
+        .sort(
+            (a, b) =>
+                new Date(b.capturedAt).getTime() -
+                new Date(a.capturedAt).getTime(),
+        )[0];
+
+    const eodSnapshot = snapshots
+        .filter((snapshot) => snapshot.type === "EOD")
+        .sort(
+            (a, b) =>
+                new Date(b.capturedAt).getTime() -
+                new Date(a.capturedAt).getTime(),
+        )[0];
+
+    const comparison =
+        sodSnapshot && eodSnapshot
+            ? compareSnapshots(
+                sodSnapshot.tasks,
+                eodSnapshot.tasks,
+            )
+            : null;
 
     const totalPlannedMins = parentTasks.reduce((total, task) => {
         const subtasks = tasklist.tasks.filter(
@@ -365,6 +443,157 @@ export default function TasklistPage() {
                             </>
                         )}
                     </div>
+
+                    {snapshots.length > 0 && (
+                        <section className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                            <h3 className="text-sm font-semibold text-gray-900">
+                                Day Summary
+                            </h3>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                {[sodSnapshot, eodSnapshot]
+                                    .filter(Boolean)
+                                    .map((snapshot) => (
+                                        <div
+                                            key={`${snapshot!.type}-${snapshot!.capturedAt}`}
+                                            className="rounded-lg border border-gray-200 bg-white p-4"
+                                        >
+                                            <p className="text-sm font-semibold text-gray-900">
+                                                {snapshot!.type}
+                                            </p>
+
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Captured at{" "}
+                                                {new Date(
+                                                    snapshot!.capturedAt,
+                                                ).toLocaleTimeString("en-IN", {
+                                                    hour: "2-digit",
+                                                    minute: "2-digit",
+                                                })}
+                                            </p>
+
+                                            <p className="mt-3 text-sm text-gray-600">
+                                                Tasks captured:{" "}
+                                                <span className="font-medium text-gray-900">
+                                                    {snapshot!.tasks.length}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    ))}
+                            </div>
+
+                            {comparison && (
+                                <div className="mt-4 border-t border-gray-200 pt-4">
+                                    <h4 className="text-sm font-semibold text-gray-900">
+                                        SOD vs EOD
+                                    </h4>
+
+                                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                        <div className="rounded-lg bg-emerald-50 p-3">
+                                            <p className="text-xs font-medium text-emerald-700">
+                                                Completed
+                                            </p>
+
+                                            <p className="mt-1 text-xl font-semibold text-emerald-800">
+                                                {comparison.completed.length}
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-lg bg-blue-50 p-3">
+                                            <p className="text-xs font-medium text-blue-700">
+                                                Added During Day
+                                            </p>
+
+                                            <p className="mt-1 text-xl font-semibold text-blue-800">
+                                                {comparison.added.length}
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-lg bg-yellow-50 p-3">
+                                            <p className="text-xs font-medium text-yellow-700">
+                                                Remaining
+                                            </p>
+
+                                            <p className="mt-1 text-xl font-semibold text-yellow-800">
+                                                {comparison.remaining.length}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                                        <div className="rounded-lg border border-emerald-100 bg-white p-4">
+                                            <p className="text-xs font-semibold text-emerald-700">
+                                                Completed
+                                            </p>
+
+                                            {comparison.completed.length > 0 ? (
+                                                <ul className="mt-2 space-y-2">
+                                                    {comparison.completed.map((task) => (
+                                                        <li
+                                                            key={task.id}
+                                                            className="text-sm text-gray-700"
+                                                        >
+                                                            ✓ {task.title}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p className="mt-2 text-xs text-gray-400">
+                                                    No tasks completed.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="rounded-lg border border-blue-100 bg-white p-4">
+                                            <p className="text-xs font-semibold text-blue-700">
+                                                Added During Day
+                                            </p>
+
+                                            {comparison.added.length > 0 ? (
+                                                <ul className="mt-2 space-y-2">
+                                                    {comparison.added.map((task) => (
+                                                        <li
+                                                            key={task.id}
+                                                            className="text-sm text-gray-700"
+                                                        >
+                                                            + {task.title}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p className="mt-2 text-xs text-gray-400">
+                                                    No tasks added.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="rounded-lg border border-yellow-100 bg-white p-4">
+                                            <p className="text-xs font-semibold text-yellow-700">
+                                                Remaining
+                                            </p>
+
+                                            {comparison.remaining.length > 0 ? (
+                                                <ul className="mt-2 space-y-2">
+                                                    {comparison.remaining.map((task) => (
+                                                        <li
+                                                            key={task.id}
+                                                            className="text-sm text-gray-700"
+                                                        >
+                                                            ○ {task.title}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p className="mt-2 text-xs text-gray-400">
+                                                    All tasks completed.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+                    )}
 
                     {isAddingTask && (
                         <form
