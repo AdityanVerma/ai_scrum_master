@@ -165,6 +165,16 @@ export async function POST(
       );
     }
 
+    if (targetTasklist.eodCapturedAt) {
+      return NextResponse.json(
+        {
+          error:
+            'This tasklist is locked because EOD has already been captured.',
+        },
+        { status: 409 },
+      );
+    }
+
     const sourceTask = await prisma.tasklistTask.findUnique({
       where: { id: sourceTaskId },
     });

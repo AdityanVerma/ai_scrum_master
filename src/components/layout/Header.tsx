@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 
 const navigation = [
     { name: "Dashboard", href: "/" },
-    { name: "Plan Sprint", href: "/sprint-planning" },
+    { name: "Plan Sprint", href: "/sprint-proposal" },
     { name: "Sprints", href: "/sprints" },
     { name: "Team", href: "/team-members" },
-    { name: "Documentation", href: "/documentation", }
+    { name: "Tasklist", href: "/tasklist" },
+    { name: "Documentation", href: "/documentation" },
 ];
 
 export default function Header() {
