@@ -9,6 +9,27 @@ export async function POST(
     const { tasklistId } = await params;
     const body = await request.json();
 
+    const tasklist = await prisma.dailyTasklist.findUnique({
+      where: { id: tasklistId },
+    });
+
+    if (!tasklist) {
+      return NextResponse.json(
+        { error: 'Tasklist not found.' },
+        { status: 404 },
+      );
+    }
+
+    if (tasklist.eodCapturedAt) {
+      return NextResponse.json(
+        {
+          error:
+            'This tasklist is locked because EOD has already been captured.',
+        },
+        { status: 409 },
+      );
+    }
+
     const { title, category, estimatedMins, order, parentTaskId, priority } =
       body;
 
@@ -18,19 +39,6 @@ export async function POST(
           error: 'title, category, estimatedMins, and order are required.',
         },
         { status: 400 },
-      );
-    }
-
-    const tasklist = await prisma.dailyTasklist.findUnique({
-      where: {
-        id: tasklistId,
-      },
-    });
-
-    if (!tasklist) {
-      return NextResponse.json(
-        { error: 'Tasklist not found.' },
-        { status: 404 },
       );
     }
 
@@ -80,6 +88,27 @@ export async function DELETE(
       );
     }
 
+    const tasklist = await prisma.dailyTasklist.findUnique({
+      where: { id: tasklistId },
+    });
+
+    if (!tasklist) {
+      return NextResponse.json(
+        { error: 'Tasklist not found.' },
+        { status: 404 },
+      );
+    }
+
+    if (tasklist.eodCapturedAt) {
+      return NextResponse.json(
+        {
+          error:
+            'This tasklist is locked because EOD has already been captured.',
+        },
+        { status: 409 },
+      );
+    }
+
     const task = await prisma.tasklistTask.findFirst({
       where: {
         id: taskId,
@@ -125,6 +154,27 @@ export async function PUT(
       return NextResponse.json(
         { error: 'taskId is required.' },
         { status: 400 },
+      );
+    }
+
+    const tasklist = await prisma.dailyTasklist.findUnique({
+      where: { id: tasklistId },
+    });
+
+    if (!tasklist) {
+      return NextResponse.json(
+        { error: 'Tasklist not found.' },
+        { status: 404 },
+      );
+    }
+
+    if (tasklist.eodCapturedAt) {
+      return NextResponse.json(
+        {
+          error:
+            'This tasklist is locked because EOD has already been captured.',
+        },
+        { status: 409 },
       );
     }
 

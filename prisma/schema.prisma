@@ -209,6 +209,8 @@ model TasklistTask {
   status        String @default("PENDING")
   priority      String @default("MEDIUM")
 
+  carriedForwardFromId String?
+
   parentTaskId String?
   parentTask   TasklistTask?  @relation("TaskSubtasks", fields: [parentTaskId], references: [id])
   subtasks     TasklistTask[] @relation("TaskSubtasks")

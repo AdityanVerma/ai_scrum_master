@@ -411,7 +411,8 @@ export default function TasklistPage() {
                             <button
                                 type="button"
                                 onClick={() => setIsAddingTask(true)}
-                                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
+                                disabled={!!tasklist.eodCapturedAt}
+                                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
                             >
                                 + Add Task
                             </button>
@@ -581,6 +582,66 @@ export default function TasklistPage() {
                                                         >
                                                             ○ {task.title}
                                                         </li>
+
+                                                        // <li
+                                                        //     key={task.id}
+                                                        //     className="flex items-center justify-between gap-3 text-sm text-gray-700"
+                                                        // >
+                                                        //     <span>○ {task.title}</span>
+
+                                                        //     <button
+                                                        //         type="button"
+                                                        //         onClick={async () => {
+                                                        //             try {
+                                                        //                 const response = await fetch(
+                                                        //                     `/api/tasklists/${tasklist.id}`,
+                                                        //                     {
+                                                        //                         method: "POST",
+                                                        //                         headers: {
+                                                        //                             "Content-Type": "application/json",
+                                                        //                         },
+                                                        //                         body: JSON.stringify({
+                                                        //                             sourceTaskId: task.id,
+                                                        //                         }),
+                                                        //                     },
+                                                        //                 );
+
+                                                        //                 const result = await response.json();
+
+                                                        //                 if (!response.ok) {
+                                                        //                     throw new Error(
+                                                        //                         result.error ||
+                                                        //                         "Failed to carry forward task.",
+                                                        //                     );
+                                                        //                 }
+
+                                                        //                 setTasklist({
+                                                        //                     ...tasklist,
+                                                        //                     tasks: [
+                                                        //                         ...tasklist.tasks,
+                                                        //                         result.data,
+                                                        //                     ],
+                                                        //                 });
+
+                                                        //                 alert("Task carried forward successfully.");
+                                                        //             } catch (error) {
+                                                        //                 console.error(
+                                                        //                     "Failed to carry forward task:",
+                                                        //                     error,
+                                                        //                 );
+
+                                                        //                 alert(
+                                                        //                     error instanceof Error
+                                                        //                         ? error.message
+                                                        //                         : "Failed to carry forward task.",
+                                                        //                 );
+                                                        //             }
+                                                        //         }}
+                                                        //         className="rounded-md border border-emerald-500 px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50"
+                                                        //     >
+                                                        //         Carry Forward
+                                                        //     </button>
+                                                        // </li>
                                                     ))}
                                                 </ul>
                                             ) : (
@@ -832,7 +893,8 @@ export default function TasklistPage() {
                                                                 alert("Failed to update task status.");
                                                             }
                                                         }}
-                                                        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-none focus:border-emerald-500"
+                                                        disabled={!!tasklist.eodCapturedAt}
+                                                        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         <option value="PENDING">Pending</option>
                                                         <option value="IN_PROGRESS">In Progress</option>
@@ -850,7 +912,8 @@ export default function TasklistPage() {
                                                             setEditTaskPriority(task.priority);
                                                             setEditTaskEstimatedMins(String(task.estimatedMins));
                                                         }}
-                                                        className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                                                        disabled={!!tasklist.eodCapturedAt}
+                                                        className="text-sm font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
                                                     >
                                                         Edit
                                                     </button>
@@ -892,7 +955,8 @@ export default function TasklistPage() {
                                                                 alert("Failed to delete task.");
                                                             }
                                                         }}
-                                                        className="text-sm font-medium text-red-500 hover:text-red-600"
+                                                        disabled={!!tasklist.eodCapturedAt}
+                                                        className="text-xs font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         Delete
                                                     </button>
@@ -1240,7 +1304,8 @@ export default function TasklistPage() {
                                                                             alert("Failed to update subtask status.");
                                                                         }
                                                                     }}
-                                                                    className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-none focus:border-emerald-500"
+                                                                    disabled={!!tasklist.eodCapturedAt}
+                                                                    className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                                                                 >
                                                                     <option value="PENDING">Pending</option>
                                                                     <option value="IN_PROGRESS">In Progress</option>
@@ -1248,6 +1313,7 @@ export default function TasklistPage() {
                                                                     <option value="BLOCKED">Blocked</option>
                                                                 </select>
 
+                                                                {/* Subtask Edit button */}
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
@@ -1257,11 +1323,11 @@ export default function TasklistPage() {
                                                                             String(subtask.estimatedMins),
                                                                         );
                                                                     }}
-                                                                    className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
+                                                                    disabled={!!tasklist.eodCapturedAt}
+                                                                    className="text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                                                                 >
                                                                     Edit
                                                                 </button>
-
                                                                 {editingSubtaskId === subtask.id && (
                                                                     <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                                                                         <div className="flex gap-3">
@@ -1356,6 +1422,7 @@ export default function TasklistPage() {
                                                                     </div>
                                                                 )}
 
+                                                                {/* Subtask Delete button */}
                                                                 <button
                                                                     type="button"
                                                                     onClick={async () => {
@@ -1400,7 +1467,8 @@ export default function TasklistPage() {
                                                                             alert("Failed to delete subtask.");
                                                                         }
                                                                     }}
-                                                                    className="ml-4 text-xs font-medium text-red-500 hover:text-red-600"
+                                                                    disabled={!!tasklist.eodCapturedAt}
+                                                                    className="text-xs font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                                                 >
                                                                     Delete
                                                                 </button>

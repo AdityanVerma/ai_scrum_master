@@ -136,3 +136,92 @@ export async function GET(
     );
   }
 }
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ tasklistId: string }> },
+) {
+  try {
+    const { tasklistId } = await params;
+    const body = await request.json();
+
+    const { sourceTaskId } = body;
+
+    if (!sourceTaskId) {
+      return NextResponse.json(
+        { error: 'sourceTaskId is required.' },
+        { status: 400 },
+      );
+    }
+
+    const targetTasklist = await prisma.dailyTasklist.findUnique({
+      where: { id: tasklistId },
+    });
+
+    if (!targetTasklist) {
+      return NextResponse.json(
+        { error: 'Target tasklist not found.' },
+        { status: 404 },
+      );
+    }
+
+    const sourceTask = await prisma.tasklistTask.findUnique({
+      where: { id: sourceTaskId },
+    });
+
+    if (!sourceTask) {
+      return NextResponse.json(
+        { error: 'Source task not found.' },
+        { status: 404 },
+      );
+    }
+
+    if (sourceTask.status === 'DONE') {
+      return NextResponse.json(
+        { error: 'Completed tasks cannot be carried forward.' },
+        { status: 400 },
+      );
+    }
+
+    const existingTasks = await prisma.tasklistTask.findMany({
+      where: {
+        tasklistId,
+        parentTaskId: null,
+      },
+      orderBy: {
+        order: 'desc',
+      },
+      take: 1,
+    });
+
+    const nextOrder = existingTasks.length > 0 ? existingTasks[0].order + 1 : 1;
+
+    const carriedTask = await prisma.tasklistTask.create({
+      data: {
+        tasklistId,
+        title: sourceTask.title,
+        category: sourceTask.category,
+        estimatedMins: sourceTask.estimatedMins,
+        order: nextOrder,
+        status: 'PENDING',
+        priority: sourceTask.priority,
+        carriedForwardFromId: sourceTask.id,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: carriedTask,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    console.error('Carry forward task error:', error);
+
+    return NextResponse.json(
+      { error: 'Failed to carry forward task.' },
+      { status: 500 },
+    );
+  }
+}
