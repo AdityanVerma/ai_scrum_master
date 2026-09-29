@@ -1,0 +1,685 @@
+# Internal Management System: Documentation Feature — Completed Work
+
+*An implementation summary of the functionality completed so far in the Internal Management System, covering the sprint planning workflow, task management enhancements, assignee recommendations, and the central Documentation module.*
+
+---
+
+## Why this document exists
+
+This document records the functionality implemented and verified so far in the Internal Management System. It describes the user's intent, the resulting outcome, the implemented solution, how it supports the workflow, and the current limitations or future scope.
+
+The purpose is to provide a single reference for the completed work before moving on to the next feature set.
+
+---
+
+## Guiding principles carried through the implementation
+
+- **Build incrementally.** Features were implemented in small, testable steps rather than introducing the entire workflow at once.
+- **Keep the interface practical.** The UI focuses on actions users need during sprint planning, execution, and documentation management.
+- **Preserve existing workflows.** New functionality was integrated into the existing sprint detail page and API structure without replacing working features.
+- **Separate metadata from content.** Documents contain structured information such as title, type, source, tags, and sprint association.
+- **Support both sprint-specific and general documentation.** Documentation can belong to a particular sprint or remain available as general project documentation.
+- **Verify each change.** Each major implementation step was tested in the running application before proceeding.
+
+---
+
+# 1. AI Sprint Planning
+
+## Intent
+
+- The user wants to convert project requirements into a structured sprint proposal with actionable implementation information.
+- The system should reduce manual planning effort by using AI to analyze requirements and generate planning outputs.
+
+## Outcome
+
+- The system can generate and save sprint proposals.
+- Generated sprint information becomes available in the Internal Management System for further execution and tracking.
+
+## Current solution
+
+- AI-driven sprint planning generates structured sprint proposal data.
+- The proposal includes sprint-related information and associated functions.
+- Sprint proposals can be persisted in the database.
+- Saved sprints are visible in the application after creation.
+- The system handles AI responses that may be returned inside Markdown JSON code fences.
+
+## Implementation details
+
+- Added handling for AI responses wrapped in fenced blocks such as:
+
+  ```text
+  ```json
+  { ... }
+  ```
+  ```
+
+- Cleaned the AI response before parsing it with `JSON.parse`.
+- Ensured sprint functions are included in the generated proposal.
+- Persisted sprint functions when saving the sprint proposal.
+- Confirmed that sprint creation and saved sprint visibility work correctly.
+
+## How it helps the workflow
+
+- Reduces the manual effort required to convert requirements into sprint-level planning data.
+- Creates a structured starting point for task breakdown, assignment, and execution.
+- Keeps generated planning information available for later sprint management.
+
+## Assumptions and limitations
+
+- AI-generated output must still be validated before being treated as final planning decisions.
+- The quality of the generated sprint proposal depends on the quality and completeness of the requirements supplied.
+
+---
+
+# 2. Sprint Functions
+
+## Intent
+
+- The user wants each sprint to retain the functions or capability areas that define its scope.
+- These functions should remain available after the sprint proposal is saved.
+
+## Outcome
+
+- Sprint functions are generated, stored, and associated with the relevant sprint.
+
+## Current solution
+
+- `SprintProposal` includes a `functions` array.
+- `buildSprintProposal` returns the functions received in the input.
+- `saveSprintProposal` creates the corresponding sprint functions in the database.
+
+## How it helps the workflow
+
+- Keeps the sprint's intended functional scope visible.
+- Provides structured information that can later support filtering, documentation association, and progress analysis.
+- Prevents important planning context from being lost after sprint creation.
+
+## Assumptions and limitations
+
+- Functions are currently stored as sprint-level information.
+- Additional function-based filtering or reporting can be added later.
+
+---
+
+# 3. Task Management and Dependency Visibility
+
+## Intent
+
+- The user wants to understand which tasks depend on other tasks.
+- Dependencies should be readable directly from the sprint detail interface instead of requiring users to inspect raw IDs.
+
+## Outcome
+
+- Task dependencies are displayed with the dependent task's task ID and title.
+
+## Current solution
+
+- The backend sprint query includes dependency relationships.
+- Each dependency includes the related task it depends on.
+- The frontend task type was updated to represent dependency information.
+- Dependency labels are rendered in a readable format:
+
+  ```text
+  TASK-001 - Example task title
+  ```
+
+## Implementation details
+
+The backend includes:
+
+- `dependencies`
+- Related `dependsOn` task
+- `dependedOnBy` relationship
+
+The frontend displays each dependency using:
+
+```text
+{dependency.dependsOn.taskId} - {dependency.dependsOn.title}
+```
+
+## How it helps the workflow
+
+- Makes task sequencing easier to understand.
+- Helps users identify blockers and prerequisite work.
+- Reduces confusion caused by displaying only database identifiers.
+- Supports better sprint execution and coordination.
+
+## Assumptions and limitations
+
+- The current implementation focuses on visibility.
+- Future improvements may include dependency graphs, blocker indicators, and dependency status tracking.
+
+---
+
+# 4. AI-Assisted Assignee Recommendation
+
+## Intent
+
+- The user wants help identifying an appropriate team member for a task.
+- The system should provide a recommendation while still allowing the user to make the final assignment decision.
+
+## Outcome
+
+- Users can request an assignee recommendation for a task.
+- The recommended member can be assigned directly through the interface.
+
+## Current solution
+
+- A task recommendation API endpoint is available at:
+
+  ```text
+  /api/assignment/task-recommendation
+  ```
+
+- The sprint detail page includes a `Recommend Assignee` action.
+- The recommendation result contains a recommended member.
+- The existing `Assign` action uses the recommended member's ID to assign the task.
+
+## Implementation details
+
+The assignment flow connects the recommended member to the existing assignment handler:
+
+```tsx
+const recommendedMember =
+    recommendations[task.id]?.recommendedMember;
+
+if (recommendedMember) {
+    handleAssignRecommended(
+        task.id,
+        recommendedMember.memberId,
+    );
+}
+```
+
+## How it helps the workflow
+
+- Reduces the effort required to manually evaluate possible assignees.
+- Connects AI recommendations to an actual assignment action.
+- Keeps the user in control of the final assignment.
+- Supports faster task distribution during sprint execution.
+
+## Assumptions and limitations
+
+- Recommendations should be treated as assistance rather than automatic final decisions.
+- Recommendation quality depends on the available member, skill, and task information.
+- The recommendation endpoint must remain available for the UI action to work.
+
+---
+
+# 5. Documentation Data Model
+
+## Intent
+
+- The user wants documentation to be stored as a structured, reusable resource rather than as unorganized text.
+- Documents should support manual content, external links, tags, and sprint association.
+
+## Outcome
+
+- A dedicated `Document` model and related models are available in the database.
+- Documents can be associated with a sprint or remain general documentation.
+
+## Current solution
+
+The `Document` model includes:
+
+- Document ID
+- Title
+- Type
+- Source type
+- Content
+- URL
+- Source
+- Optional sprint association
+- Tags
+- Functions
+- Creation timestamp
+- Update timestamp
+
+The supported source types currently include:
+
+```text
+DOCUMENT
+LINK
+```
+
+The frontend has also been prepared for:
+
+```text
+UPLOAD
+```
+
+However, actual file storage and extraction are not implemented yet.
+
+## Related data structures
+
+The documentation system includes relationships for:
+
+- Document tags
+- Document-to-tag associations
+- Sprint functions
+- Document-to-function associations
+- Sprint-to-document associations
+
+## How it helps the workflow
+
+- Creates a consistent structure for project knowledge.
+- Allows documents to be discovered independently of a specific sprint.
+- Supports future search, filtering, AI retrieval, and document classification.
+
+---
+
+# 6. Document Creation API
+
+## Intent
+
+- The user wants to create documentation from the application rather than inserting records manually into the database.
+- The API should validate document information and associate documents with the correct sprint when applicable.
+
+## Outcome
+
+- Documents can be created through the `/api/documents` endpoint.
+- The API supports form-based submission from the frontend.
+- Documents are returned after successful creation and immediately displayed in the UI.
+
+## Current solution
+
+The API supports:
+
+- Document title
+- Document type
+- Source type
+- Manual document content
+- External URL
+- Optional sprint ID
+- Comma-separated tags
+
+The document creation helper validates:
+
+- Title is required.
+- Document type is required.
+- Content is required for manual documents.
+- URL is required for link-based documents.
+- The selected sprint must exist when a sprint ID is provided.
+- Tags are normalized and deduplicated.
+
+## Tag handling
+
+Tags are:
+
+- Trimmed
+- Converted to lowercase
+- Filtered for empty values
+- Deduplicated
+- Created or reused through database upsert logic
+
+## How it helps the workflow
+
+- Standardizes document creation.
+- Prevents incomplete document records.
+- Makes documents easier to categorize and retrieve.
+- Allows documentation to be associated with a specific sprint when needed.
+
+---
+
+# 7. Sprint-Level Documentation Section
+
+## Intent
+
+- The user wants to view documentation relevant to a particular sprint directly from the sprint detail page.
+- Users should be able to add and review documents without leaving the sprint workspace.
+
+## Outcome
+
+- A Documentation section was added to the sprint detail page.
+- The section displays documents associated with the current sprint.
+- Users can open an Add Document modal from the sprint page.
+
+## Current solution
+
+The sprint detail page includes:
+
+- Documentation heading
+- Document count
+- Add Document button
+- Document cards
+- Document source type indicator
+- Document content or external link
+- Document tags
+- Empty state when no documents exist
+
+The page fetches sprint-specific documents using:
+
+```text
+/api/documents?sprintId={sprintId}
+```
+
+## How it helps the workflow
+
+- Keeps sprint-related knowledge close to sprint execution.
+- Reduces context switching.
+- Makes requirements, notes, references, and other sprint materials easier to access.
+
+## Assumptions and limitations
+
+- The sprint page currently focuses on displaying documents associated with that sprint.
+- Centralized documentation management is now available through a separate page.
+
+---
+
+# 8. Central Documentation Page
+
+## Intent
+
+- The user wants one dedicated location where all documentation is visible.
+- Documentation should not be limited to the sprint in which it was created.
+
+## Outcome
+
+- A new Documentation page was created at:
+
+  ```text
+  /documentation
+  ```
+
+- The page fetches and displays all documents.
+- The page includes a dedicated header and Add Document action.
+
+## Current solution
+
+The central Documentation page includes:
+
+- Documentation page heading
+- Description
+- Add Document button
+- All Documents section
+- Dynamic document count
+- Loading state
+- Empty state
+- Document cards displayed in a responsive grid
+
+The page fetches all documents using:
+
+```text
+GET /api/documents
+```
+
+## Document card information
+
+Each card can display:
+
+- Document title
+- Document type
+- Source type
+- Manual content preview
+- External URL
+- Tags
+- Creation date
+- Associated sprint name, when applicable
+
+## How it helps the workflow
+
+- Provides a single knowledge hub for the Internal Management System.
+- Makes general and sprint-specific documentation accessible from one place.
+- Establishes a foundation for future search, filtering, and document management features.
+
+---
+
+# 9. Add Document Modal
+
+## Intent
+
+- The user wants to create documentation through a popup instead of expanding a large form inside the page.
+- The form should be accessible from both sprint-level and central documentation contexts.
+
+## Outcome
+
+- An Add Document modal was implemented.
+- The modal opens from the Add Document button.
+- The modal can be closed using the Cancel action or close icon.
+
+## Current solution
+
+The modal contains fields for:
+
+- Document title
+- Document type
+- Source type
+- Content or URL depending on source type
+- Tags
+- Sprint association
+
+The source type selector currently supports:
+
+```text
+Document Content
+External Link
+Upload Document
+```
+
+## Form behavior
+
+### Document Content
+
+Displays a textarea for manually entered content.
+
+### External Link
+
+Displays a URL input for external documentation.
+
+### Upload Document
+
+Displays a file picker for supported document formats.
+
+The frontend currently accepts:
+
+```text
+.pdf
+.doc
+.docx
+.txt
+.md
+```
+
+## How it helps the workflow
+
+- Keeps the page visually clean.
+- Provides a focused document creation experience.
+- Allows the same document creation concept to be used from multiple locations.
+- Makes the source type explicit before submission.
+
+---
+
+# 10. General Documentation and Sprint Association
+
+## Intent
+
+- The user wants to decide whether a document belongs to a specific sprint or should remain general documentation.
+- Documentation should not be forced into a sprint when it is relevant to the wider project.
+
+## Outcome
+
+- The Add Document modal includes an optional sprint selector.
+- Users can select a sprint or keep the default General Documentation option.
+
+## Current solution
+
+The sprint selector includes:
+
+```text
+General Documentation
+```
+
+followed by available sprints fetched from:
+
+```text
+/api/sprints
+```
+
+When a sprint is selected:
+
+- The sprint ID is included in the form submission.
+- The document is associated with that sprint.
+
+When General Documentation is selected:
+
+- No sprint ID is submitted.
+- The document remains independent of a sprint.
+
+## How it helps the workflow
+
+- Supports both project-wide and sprint-specific knowledge.
+- Prevents unnecessary duplication of general documentation.
+- Makes documentation ownership and context clearer.
+
+---
+
+# 11. Documentation Display and Sprint Labels
+
+## Intent
+
+- The user wants to understand the context of each document while browsing all documentation.
+- Documents associated with a sprint should clearly show that relationship.
+
+## Outcome
+
+- Document cards display the associated sprint name when one exists.
+- General documentation does not display a sprint label.
+
+## Current solution
+
+A sprint label is displayed in the format:
+
+```text
+Sprint: {sprint name}
+```
+
+The related sprint is loaded through the document query's sprint relationship.
+
+## How it helps the workflow
+
+- Gives users immediate context without opening the document.
+- Makes it easier to distinguish general documentation from sprint-specific material.
+- Supports future filtering by sprint.
+
+---
+
+# 12. Current Supported Documentation Flows
+
+| Flow | Status |
+|---|---|
+| Create manual document content | Completed and verified |
+| Create external link document | Completed and verified |
+| View sprint-specific documents | Completed and verified |
+| View all documents centrally | Completed and verified |
+| Add document through popup modal | Completed and verified |
+| Add tags to documents | Completed and verified |
+| Associate document with a sprint | Completed and verified |
+| Keep document as general documentation | Completed and verified |
+| Display associated sprint name | Completed and verified |
+| Select a file for upload | Frontend implemented |
+| Store uploaded files | Not implemented |
+| Extract uploaded document text | Not implemented |
+| Search documentation | Deferred |
+| Filter documentation | Deferred |
+
+---
+
+# 13. Deferred and Future Scope
+
+The following items were intentionally left for later implementation.
+
+## Documentation search
+
+Potential search fields:
+
+- Document title
+- Document type
+- Tags
+- Sprint name
+- Document content
+
+## Documentation filters
+
+Potential filters:
+
+- Source type
+- Document type
+- Sprint
+- Tags
+- Creation date
+
+## File storage
+
+Potential initial local-development location:
+
+```text
+public/uploads/documents/
+```
+
+The database could store:
+
+- Original filename
+- Stored file path
+- MIME type
+- File size
+- Extracted text
+
+## Document preview and detail view
+
+Future functionality may include:
+
+- Full document view
+- Markdown rendering
+- PDF preview
+- External link preview
+- Download action
+- Edit and delete actions
+
+## AI-powered documentation
+
+Potential future functionality:
+
+- Automatic document summarization
+- Tag generation
+- Document classification
+- Requirement extraction
+- Linking documents to sprint functions
+- Semantic search using embeddings
+- AI-generated documentation from sprint activity
+
+---
+
+# 14. Verification Summary
+
+The following functionality was tested successfully during implementation:
+
+- Sprint creation and saved sprint visibility
+- AI response parsing after fenced JSON cleanup
+- Sprint function persistence
+- Readable task dependency display
+- Assignee recommendation and assignment flow
+- Sprint-specific document fetching
+- Central Documentation page loading
+- Manual document creation
+- External link creation
+- Add Document popup modal
+- Optional sprint association
+- General Documentation creation
+- Display of associated sprint names
+
+The Upload Document option currently reaches the intended temporary limitation message because file storage and document extraction have not yet been implemented.
+
+---
+
+# Where this leaves us
+
+The Internal Management System now has a functional foundation for sprint planning, task execution support, assignee recommendations, and centralized documentation.
+
+The Documentation feature currently supports both:
+
+- **Sprint-specific documentation**
+- **General project documentation**
+
+Manual content and external links are working end-to-end. File selection is available in the UI, while actual file storage and text extraction remain future work.
+
+Search and filtering were intentionally deferred and can be implemented after the core documentation workflow is finalized.
