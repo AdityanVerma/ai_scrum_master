@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageContainer from "@/components/layout/PageContainer";
+import PageHeader from "@/components/layout/PageHeader";
+import { formatDate } from "@/lib/format-date";
 
 type Sprint = {
     id: string;
@@ -50,63 +52,42 @@ export default function SprintsPage() {
 
     return (
         <PageContainer>
-            <h1 className="text-3xl font-semibold">
-                Saved Sprints
-            </h1>
-
-            <p className="mt-2 text-[#5F6B64]">
-                Previously generated sprint proposals.
-            </p>
+            <PageHeader
+                title="Saved Sprints"
+                description="Previously generated sprint proposals."
+            />
 
             {isLoading && (
-                <p className="mt-8">Loading sprints...</p>
+                <p className="text-sm text-muted">Loading sprints...</p>
             )}
 
-            {error && (
-                <p className="mt-8 text-red-600">
-                    {error}
-                </p>
-            )}
+            {error && <p className="alert-error">{error}</p>}
 
             {!isLoading && !error && sprints.length === 0 && (
-                <p className="mt-8">
-                    No saved sprints yet.
-                </p>
+                <p className="empty-state">No saved sprints yet.</p>
             )}
 
-            <div className="mt-8 space-y-4">
+            <div className="space-y-4">
                 {sprints.map((sprint) => (
-                    <div
-                        key={sprint.id}
-                        className="rounded-2xl border border-[#DDE8E1] bg-white p-6 shadow-sm"
-                    >
+                    <div key={sprint.id} className="card">
                         <h2 className="text-xl font-semibold">
                             {sprint.name}
                         </h2>
 
-                        <p className="mt-2 text-[#5F6B64]">
-                            {sprint.goal}
-                        </p>
+                        <p className="mt-2 text-muted">{sprint.goal}</p>
 
-                        <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
                             <span>
-                                {new Date(
-                                    sprint.startDate,
-                                ).toLocaleDateString()}{" "}
-                                →{" "}
-                                {new Date(
-                                    sprint.endDate,
-                                ).toLocaleDateString()}
+                                {formatDate(sprint.startDate)} →{" "}
+                                {formatDate(sprint.endDate)}
                             </span>
 
-                            <span>
-                                {sprint.totalEstimatedHours} hours
-                            </span>
+                            <span>{sprint.totalEstimatedHours} hours</span>
                         </div>
 
                         <Link
                             href={`/sprints/${sprint.id}`}
-                            className="mt-5 inline-block rounded-lg bg-[#78C9A3] px-4 py-2 text-sm font-medium text-[#1F2924] transition hover:bg-[#91D8B9]"
+                            className="btn-primary mt-5"
                         >
                             View Sprint
                         </Link>

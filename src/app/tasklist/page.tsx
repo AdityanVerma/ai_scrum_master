@@ -1,111 +1,85 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PageContainer from "@/components/layout/PageContainer";
+import PageHeader from "@/components/layout/PageHeader";
+import { formatDate } from "@/lib/format-date";
+import AddTaskForm from "@/components/tasklist/AddTaskForm";
+import DaySummary from "@/components/tasklist/DaySummary";
+import TaskCard from "@/components/tasklist/TaskCard";
+import {
+    getPlannedMins,
+    type Snapshot,
+    type Task,
+    type Tasklist,
+} from "@/components/tasklist/shared";
 
-type Task = {
+type TeamMember = {
     id: string;
-    title: string;
-    category: string;
-    estimatedMins: number;
-    order: number;
-    status: string;
-    priority: string;
-    parentTaskId: string | null;
+    name: string;
+    role: string;
 };
-
-type Tasklist = {
-    id: string;
-    date: string;
-    status: string;
-    sodCapturedAt: string | null;
-    eodCapturedAt: string | null;
-    member: {
-        id: string;
-        name: string;
-        role: string;
-    };
-    tasks: Task[];
-};
-
-function compareSnapshots(
-    sodTasks: Task[],
-    eodTasks: Task[],
-) {
-    const sodMap = new Map(
-        sodTasks.map((task) => [task.id, task]),
-    );
-
-    const eodMap = new Map(
-        eodTasks.map((task) => [task.id, task]),
-    );
-
-    const completed = eodTasks.filter((task) => {
-        const sodTask = sodMap.get(task.id);
-
-        return (
-            sodTask &&
-            sodTask.status !== "DONE" &&
-            task.status === "DONE"
-        );
-    });
-
-    const added = eodTasks.filter(
-        (task) => !sodMap.has(task.id),
-    );
-
-    const remaining = eodTasks.filter(
-        (task) => task.status !== "DONE",
-    );
-
-    return {
-        completed,
-        added,
-        remaining,
-    };
-}
-
-const MEMBER_ID = "cmu25c92n000028lxjd5zo173";
 
 export default function TasklistPage() {
     const [tasklist, setTasklist] = useState<Tasklist | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<{
+        type: "success" | "error";
+        message: string;
+    } | null>(null);
+    const [members, setMembers] = useState<TeamMember[]>([]);
+    const [memberId, setMemberId] = useState<string | null>(null);
+    const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
     const [isAddingTask, setIsAddingTask] = useState(false);
     const [isCapturingSod, setIsCapturingSod] = useState(false);
     const [isCapturingEod, setIsCapturingEod] = useState(false);
-    const [snapshots, setSnapshots] = useState<
-        {
-            type: string;
-            capturedAt: string;
-            tasks: Task[];
-        }[]
-    >([]);
-    const [taskTitle, setTaskTitle] = useState("");
-    const [taskCategory, setTaskCategory] = useState("Development");
     const [availableHours, setAvailableHours] = useState("8");
-    const [taskEstimatedMins, setTaskEstimatedMins] = useState("60");
-    const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(
-        null,
-    );
-    const [taskPriority, setTaskPriority] = useState("MEDIUM");
-    const [subtaskTitle, setSubtaskTitle] = useState("");
-    const [subtaskEstimatedMins, setSubtaskEstimatedMins] = useState("60");
-    const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-    const [editTaskTitle, setEditTaskTitle] = useState("");
-    const [editTaskCategory, setEditTaskCategory] = useState("Development");
-    const [editTaskPriority, setEditTaskPriority] = useState("MEDIUM");
-    const [editTaskEstimatedMins, setEditTaskEstimatedMins] = useState("60");
-    const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
-    const [editSubtaskTitle, setEditSubtaskTitle] = useState("");
-    const [editSubtaskEstimatedMins, setEditSubtaskEstimatedMins] =
-        useState("60");
 
     useEffect(() => {
+        async function fetchMembers() {
+            try {
+                const response = await fetch("/api/team-members");
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.error || "Failed to fetch team members.",
+                    );
+                }
+
+                setMembers(result.data);
+
+                if (result.data.length > 0) {
+                    setMemberId(result.data[0].id);
+                } else {
+                    setIsLoading(false);
+                }
+            } catch (error) {
+                console.error("Failed to fetch team members:", error);
+                setLoadError(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to fetch team members.",
+                );
+                setIsLoading(false);
+            }
+        }
+
+        fetchMembers();
+    }, []);
+
+    useEffect(() => {
+        if (!memberId) return;
+
+        let cancelled = false;
+
         async function fetchTasklist() {
             try {
                 const date = new Date().toISOString().split("T")[0];
 
                 const response = await fetch(
-                    `/api/tasklists?memberId=${MEMBER_ID}&date=${date}`,
+                    `/api/tasklists?memberId=${memberId}&date=${date}`,
                 );
 
                 const result = await response.json();
@@ -116,6 +90,13 @@ export default function TasklistPage() {
                     );
                 }
 
+                if (cancelled) return;
+
+                if (!result.data) {
+                    setTasklist(null);
+                    return;
+                }
+
                 setTasklist(result.data);
 
                 const snapshotsResponse = await fetch(
@@ -124,85 +105,196 @@ export default function TasklistPage() {
 
                 const snapshotsResult = await snapshotsResponse.json();
 
-                if (snapshotsResponse.ok) {
+                if (!cancelled && snapshotsResponse.ok) {
                     setSnapshots(snapshotsResult.data.snapshots);
                 }
             } catch (error) {
+                if (cancelled) return;
+
                 console.error("Failed to fetch tasklist:", error);
+                setLoadError(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to fetch tasklist.",
+                );
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         }
 
         fetchTasklist();
-    }, []);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [memberId]);
+
+    function handleMemberChange(id: string) {
+        setMemberId(id);
+        setTasklist(null);
+        setSnapshots([]);
+        setLoadError(null);
+        setIsLoading(true);
+    }
+
+    function showNotice(type: "success" | "error", message: string) {
+        setNotice({ type, message });
+    }
+
+    function updateTasks(update: (tasks: Task[]) => Task[]) {
+        setTasklist((current) =>
+            current ? { ...current, tasks: update(current.tasks) } : current,
+        );
+    }
+
+    function handleTaskCreated(task: Task) {
+        updateTasks((tasks) => [...tasks, task]);
+    }
+
+    function handleTaskUpdated(task: Task) {
+        updateTasks((tasks) =>
+            tasks.map((item) => (item.id === task.id ? task : item)),
+        );
+    }
+
+    // Deleting a task also removes its subtasks.
+    function handleTaskDeleted(taskId: string) {
+        updateTasks((tasks) =>
+            tasks.filter(
+                (item) => item.id !== taskId && item.parentTaskId !== taskId,
+            ),
+        );
+    }
+
+    async function handleCapture(action: "SOD" | "EOD") {
+        if (!tasklist) return;
+
+        const setCapturing =
+            action === "SOD" ? setIsCapturingSod : setIsCapturingEod;
+
+        try {
+            setCapturing(true);
+
+            const response = await fetch(`/api/tasklists/${tasklist.id}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ action }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || `Failed to capture ${action}.`);
+            }
+
+            setTasklist((current) =>
+                current ? { ...current, ...result.data } : current,
+            );
+
+            showNotice("success", `${action} captured successfully.`);
+        } catch (error) {
+            console.error(`Failed to capture ${action}:`, error);
+            showNotice("error", `Failed to capture ${action}.`);
+        } finally {
+            setCapturing(false);
+        }
+    }
+
+    useEffect(() => {
+        if (!notice) return;
+
+        const timer = setTimeout(() => setNotice(null), 5000);
+
+        return () => clearTimeout(timer);
+    }, [notice]);
+
+    const memberPicker =
+        members.length > 0 ? (
+            <div className="mb-6 max-w-xs">
+                <label htmlFor="member-select" className="label">
+                    Team member
+                </label>
+                <select
+                    id="member-select"
+                    className="input"
+                    value={memberId ?? ""}
+                    onChange={(event) =>
+                        handleMemberChange(event.target.value)
+                    }
+                >
+                    {members.map((member) => (
+                        <option key={member.id} value={member.id}>
+                            {member.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+        ) : null;
 
     if (isLoading) {
         return (
-            <main className="min-h-screen bg-[#f8f8f4] p-8">
-                <p className="text-sm text-gray-500">Loading tasklist...</p>
-            </main>
+            <PageContainer>
+                {memberPicker}
+                <p className="text-sm text-muted">Loading tasklist...</p>
+            </PageContainer>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <PageContainer>
+                {memberPicker}
+                <PageHeader title="My Tasklist" />
+
+                <p className="alert-error" role="alert">
+                    {loadError}
+                </p>
+            </PageContainer>
+        );
+    }
+
+    if (members.length === 0) {
+        return (
+            <PageContainer>
+                <PageHeader title="My Tasklist" />
+
+                <p className="empty-state">
+                    No team members yet. Add one on the Team page first.
+                </p>
+            </PageContainer>
         );
     }
 
     if (!tasklist) {
         return (
-            <main className="min-h-screen bg-[#f8f8f4] p-8">
-                <h1 className="text-2xl font-semibold text-gray-900">
-                    My Tasklist
-                </h1>
+            <PageContainer>
+                {memberPicker}
+                <PageHeader title="My Tasklist" />
 
-                <p className="mt-2 text-sm text-gray-500">
+                <p className="empty-state">
                     No tasklist has been created for today.
                 </p>
-            </main>
+            </PageContainer>
         );
     }
 
-    const parentTasks = tasklist.tasks.filter(
-        (task) => !task.parentTaskId,
+    const parentTasks = tasklist.tasks
+        .filter((task) => !task.parentTaskId)
+        .sort((a, b) => a.order - b.order);
+
+    const totalPlannedMins = parentTasks.reduce(
+        (total, task) =>
+            total +
+            getPlannedMins(
+                task,
+                tasklist.tasks.filter(
+                    (subtask) => subtask.parentTaskId === task.id,
+                ),
+            ),
+        0,
     );
-
-    const sodSnapshot = snapshots
-        .filter((snapshot) => snapshot.type === "SOD")
-        .sort(
-            (a, b) =>
-                new Date(b.capturedAt).getTime() -
-                new Date(a.capturedAt).getTime(),
-        )[0];
-
-    const eodSnapshot = snapshots
-        .filter((snapshot) => snapshot.type === "EOD")
-        .sort(
-            (a, b) =>
-                new Date(b.capturedAt).getTime() -
-                new Date(a.capturedAt).getTime(),
-        )[0];
-
-    const comparison =
-        sodSnapshot && eodSnapshot
-            ? compareSnapshots(
-                sodSnapshot.tasks,
-                eodSnapshot.tasks,
-            )
-            : null;
-
-    const totalPlannedMins = parentTasks.reduce((total, task) => {
-        const subtasks = tasklist.tasks.filter(
-            (subtask) => subtask.parentTaskId === task.id,
-        );
-
-        const taskMins =
-            subtasks.length > 0
-                ? subtasks.reduce(
-                    (subtotal, subtask) =>
-                        subtotal + subtask.estimatedMins,
-                    0,
-                )
-                : task.estimatedMins;
-
-        return total + taskMins;
-    }, 0);
 
     const totalPlannedHours = Math.floor(totalPlannedMins / 60);
     const totalPlannedRemainingMins = totalPlannedMins % 60;
@@ -214,1276 +306,186 @@ export default function TasklistPage() {
     const capacityHours = Math.floor(Math.abs(remainingMins) / 60);
     const capacityMinutes = Math.abs(remainingMins) % 60;
 
+    const isLocked = !!tasklist.eodCapturedAt;
+
     return (
-        <main className="min-h-screen bg-[#f8f8f4] p-8">
-            <div className="mx-auto max-w-5xl">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold text-gray-900">
-                            My Tasklist
-                        </h1>
+        <PageContainer>
+            {notice && (
+                <div
+                    role={notice.type === "error" ? "alert" : "status"}
+                    className={`fixed right-4 top-20 z-50 max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg ${
+                        notice.type === "success"
+                            ? "border-brand bg-brand-soft text-brand-strong"
+                            : "border-red-200 bg-red-50 text-red-700"
+                    }`}
+                >
+                    {notice.message}
+                </div>
+            )}
 
-                        <p className="mt-1 text-sm text-gray-500">
-                            {tasklist.member.name} · {tasklist.member.role}
-                        </p>
-                    </div>
-
+            {memberPicker}
+            <PageHeader
+                title="My Tasklist"
+                description={`${tasklist.member.name} · ${tasklist.member.role}`}
+                action={
                     <div className="text-right">
-                        <p className="text-sm font-medium text-gray-700">
-                            {new Date(tasklist.date).toLocaleDateString(
-                                "en-IN",
-                                {
-                                    day: "2-digit",
-                                    month: "short",
-                                    year: "numeric",
-                                },
-                            )}
+                        <p className="text-sm font-medium">
+                            {formatDate(tasklist.date)}
                         </p>
 
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted">
                             {tasklist.status}
                         </p>
 
                         <div className="mt-2 flex justify-end gap-2">
                             <span
-                                className={`rounded-full px-2 py-1 text-xs font-medium ${tasklist.sodCapturedAt
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-gray-100 text-gray-500"
-                                    }`}
+                                className={`badge ${tasklist.sodCapturedAt ? "badge-brand" : "badge-muted"}`}
                             >
                                 SOD {tasklist.sodCapturedAt ? "✓" : "—"}
                             </span>
 
                             <span
-                                className={`rounded-full px-2 py-1 text-xs font-medium ${tasklist.eodCapturedAt
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-gray-100 text-gray-500"
-                                    }`}
+                                className={`badge ${tasklist.eodCapturedAt ? "badge-brand" : "badge-muted"}`}
                             >
                                 EOD {tasklist.eodCapturedAt ? "✓" : "—"}
                             </span>
                         </div>
                     </div>
-                </div>
+                }
+            />
 
-                <section className="mt-8 rounded-xl border border-gray-200 bg-white p-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-lg font-semibold text-gray-900">
-                                Today&apos;s Tasks
-                            </h2>
+            <section className="card">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-semibold">
+                            Today&apos;s Tasks
+                        </h2>
 
-                            <div className="mt-1 flex items-center gap-4 text-sm">
-                                <span className="text-gray-500">
-                                    Planned:{" "}
-                                    {totalPlannedHours > 0 &&
-                                        `${totalPlannedHours}h `}
-                                    {totalPlannedRemainingMins > 0 &&
-                                        `${totalPlannedRemainingMins}m`}
-                                    {totalPlannedMins === 0 && "0m"}
-                                </span>
-
-                                <label className="flex items-center gap-2 text-gray-500">
-                                    Available:
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        step="0.5"
-                                        value={availableHours}
-                                        onChange={(event) =>
-                                            setAvailableHours(event.target.value)
-                                        }
-                                        className="w-16 rounded-md border border-gray-300 px-2 py-1 text-center text-sm text-gray-700 outline-none focus:border-emerald-500"
-                                    />
-                                    h
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-500">
-                                {tasklist.tasks.length} tasks
+                        <div className="mt-1 flex items-center gap-4 text-sm">
+                            <span className="text-muted">
+                                Planned:{" "}
+                                {totalPlannedHours > 0 &&
+                                    `${totalPlannedHours}h `}
+                                {totalPlannedRemainingMins > 0 &&
+                                    `${totalPlannedRemainingMins}m`}
+                                {totalPlannedMins === 0 && "0m"}
                             </span>
 
-                            {/* SOD - Start of Day button */}
-                            <button
-                                type="button"
-                                disabled={isCapturingSod || !!tasklist.sodCapturedAt}
-                                onClick={async () => {
-                                    try {
-                                        setIsCapturingSod(true);
-
-                                        const response = await fetch(
-                                            `/api/tasklists/${tasklist.id}`,
-                                            {
-                                                method: "PATCH",
-                                                headers: {
-                                                    "Content-Type": "application/json",
-                                                },
-                                                body: JSON.stringify({
-                                                    action: "SOD",
-                                                }),
-                                            },
-                                        );
-
-                                        const result = await response.json();
-
-                                        if (!response.ok) {
-                                            throw new Error(
-                                                result.error || "Failed to capture SOD.",
-                                            );
-                                        }
-
-                                        setTasklist({
-                                            ...tasklist,
-                                            ...result.data,
-                                        });
-
-                                        alert("SOD captured successfully.");
-                                    } catch (error) {
-                                        console.error("Failed to capture SOD:", error);
-                                        alert("Failed to capture SOD.");
-                                    } finally {
-                                        setIsCapturingSod(false);
-                                    }
-                                }}
-                                className="rounded-lg border border-emerald-500 px-4 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
-                            >
-                                {isCapturingSod
-                                    ? "Capturing..."
-                                    : tasklist.sodCapturedAt
-                                        ? "SOD Captured"
-                                        : "Start Day"}
-                            </button>
-
-                            {/* EOD - End of Day button */}
-                            <button
-                                type="button"
-                                disabled={isCapturingEod || !!tasklist.eodCapturedAt}
-                                onClick={async () => {
-                                    try {
-                                        setIsCapturingEod(true);
-
-                                        const response = await fetch(
-                                            `/api/tasklists/${tasklist.id}`,
-                                            {
-                                                method: "PATCH",
-                                                headers: {
-                                                    "Content-Type": "application/json",
-                                                },
-                                                body: JSON.stringify({
-                                                    action: "EOD",
-                                                }),
-                                            },
-                                        );
-
-                                        const result = await response.json();
-
-                                        if (!response.ok) {
-                                            throw new Error(
-                                                result.error || "Failed to capture EOD.",
-                                            );
-                                        }
-
-                                        setTasklist({
-                                            ...tasklist,
-                                            ...result.data,
-                                        });
-
-                                        alert("EOD captured successfully.");
-                                    } catch (error) {
-                                        console.error("Failed to capture EOD:", error);
-                                        alert("Failed to capture EOD.");
-                                    } finally {
-                                        setIsCapturingEod(false);
-                                    }
-                                }}
-                                className="rounded-lg border border-gray-400 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                            >
-                                {isCapturingEod
-                                    ? "Capturing..."
-                                    : tasklist.eodCapturedAt
-                                        ? "EOD Captured"
-                                        : "End Day"}
-                            </button>
-
-                            {/* Add Task button */}
-                            <button
-                                type="button"
-                                onClick={() => setIsAddingTask(true)}
-                                disabled={!!tasklist.eodCapturedAt}
-                                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-                            >
-                                + Add Task
-                            </button>
-
-                        </div>
-                    </div>
-
-                    <div
-                        className={`mt-4 rounded-lg px-4 py-3 text-sm ${isOverCapacity
-                            ? "bg-red-50 text-red-700"
-                            : "bg-emerald-50 text-emerald-700"
-                            }`}
-                    >
-                        {isOverCapacity ? (
-                            <>
-                                Over capacity by{" "}
-                                <strong>
-                                    {capacityHours > 0 && `${capacityHours}h `}
-                                    {capacityMinutes > 0 && `${capacityMinutes}m`}
-                                </strong>
-                            </>
-                        ) : (
-                            <>
-                                Remaining capacity:{" "}
-                                <strong>
-                                    {capacityHours > 0 && `${capacityHours}h `}
-                                    {capacityMinutes > 0 && `${capacityMinutes}m`}
-                                </strong>
-                            </>
-                        )}
-                    </div>
-
-                    {snapshots.length > 0 && (
-                        <section className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                            <h3 className="text-sm font-semibold text-gray-900">
-                                Day Summary
-                            </h3>
-
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                {[sodSnapshot, eodSnapshot]
-                                    .filter(Boolean)
-                                    .map((snapshot) => (
-                                        <div
-                                            key={`${snapshot!.type}-${snapshot!.capturedAt}`}
-                                            className="rounded-lg border border-gray-200 bg-white p-4"
-                                        >
-                                            <p className="text-sm font-semibold text-gray-900">
-                                                {snapshot!.type}
-                                            </p>
-
-                                            <p className="mt-1 text-xs text-gray-500">
-                                                Captured at{" "}
-                                                {new Date(
-                                                    snapshot!.capturedAt,
-                                                ).toLocaleTimeString("en-IN", {
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                })}
-                                            </p>
-
-                                            <p className="mt-3 text-sm text-gray-600">
-                                                Tasks captured:{" "}
-                                                <span className="font-medium text-gray-900">
-                                                    {snapshot!.tasks.length}
-                                                </span>
-                                            </p>
-                                        </div>
-                                    ))}
-                            </div>
-
-                            {comparison && (
-                                <div className="mt-4 border-t border-gray-200 pt-4">
-                                    <h4 className="text-sm font-semibold text-gray-900">
-                                        SOD vs EOD
-                                    </h4>
-
-                                    <div className="mt-3 grid gap-3 md:grid-cols-3">
-                                        <div className="rounded-lg bg-emerald-50 p-3">
-                                            <p className="text-xs font-medium text-emerald-700">
-                                                Completed
-                                            </p>
-
-                                            <p className="mt-1 text-xl font-semibold text-emerald-800">
-                                                {comparison.completed.length}
-                                            </p>
-                                        </div>
-
-                                        <div className="rounded-lg bg-blue-50 p-3">
-                                            <p className="text-xs font-medium text-blue-700">
-                                                Added During Day
-                                            </p>
-
-                                            <p className="mt-1 text-xl font-semibold text-blue-800">
-                                                {comparison.added.length}
-                                            </p>
-                                        </div>
-
-                                        <div className="rounded-lg bg-yellow-50 p-3">
-                                            <p className="text-xs font-medium text-yellow-700">
-                                                Remaining
-                                            </p>
-
-                                            <p className="mt-1 text-xl font-semibold text-yellow-800">
-                                                {comparison.remaining.length}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 grid gap-4 md:grid-cols-3">
-                                        <div className="rounded-lg border border-emerald-100 bg-white p-4">
-                                            <p className="text-xs font-semibold text-emerald-700">
-                                                Completed
-                                            </p>
-
-                                            {comparison.completed.length > 0 ? (
-                                                <ul className="mt-2 space-y-2">
-                                                    {comparison.completed.map((task) => (
-                                                        <li
-                                                            key={task.id}
-                                                            className="text-sm text-gray-700"
-                                                        >
-                                                            ✓ {task.title}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="mt-2 text-xs text-gray-400">
-                                                    No tasks completed.
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <div className="rounded-lg border border-blue-100 bg-white p-4">
-                                            <p className="text-xs font-semibold text-blue-700">
-                                                Added During Day
-                                            </p>
-
-                                            {comparison.added.length > 0 ? (
-                                                <ul className="mt-2 space-y-2">
-                                                    {comparison.added.map((task) => (
-                                                        <li
-                                                            key={task.id}
-                                                            className="text-sm text-gray-700"
-                                                        >
-                                                            + {task.title}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="mt-2 text-xs text-gray-400">
-                                                    No tasks added.
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <div className="rounded-lg border border-yellow-100 bg-white p-4">
-                                            <p className="text-xs font-semibold text-yellow-700">
-                                                Remaining
-                                            </p>
-
-                                            {comparison.remaining.length > 0 ? (
-                                                <ul className="mt-2 space-y-2">
-                                                    {comparison.remaining.map((task) => (
-                                                        <li
-                                                            key={task.id}
-                                                            className="text-sm text-gray-700"
-                                                        >
-                                                            ○ {task.title}
-                                                        </li>
-
-                                                        // <li
-                                                        //     key={task.id}
-                                                        //     className="flex items-center justify-between gap-3 text-sm text-gray-700"
-                                                        // >
-                                                        //     <span>○ {task.title}</span>
-
-                                                        //     <button
-                                                        //         type="button"
-                                                        //         onClick={async () => {
-                                                        //             try {
-                                                        //                 const response = await fetch(
-                                                        //                     `/api/tasklists/${tasklist.id}`,
-                                                        //                     {
-                                                        //                         method: "POST",
-                                                        //                         headers: {
-                                                        //                             "Content-Type": "application/json",
-                                                        //                         },
-                                                        //                         body: JSON.stringify({
-                                                        //                             sourceTaskId: task.id,
-                                                        //                         }),
-                                                        //                     },
-                                                        //                 );
-
-                                                        //                 const result = await response.json();
-
-                                                        //                 if (!response.ok) {
-                                                        //                     throw new Error(
-                                                        //                         result.error ||
-                                                        //                         "Failed to carry forward task.",
-                                                        //                     );
-                                                        //                 }
-
-                                                        //                 setTasklist({
-                                                        //                     ...tasklist,
-                                                        //                     tasks: [
-                                                        //                         ...tasklist.tasks,
-                                                        //                         result.data,
-                                                        //                     ],
-                                                        //                 });
-
-                                                        //                 alert("Task carried forward successfully.");
-                                                        //             } catch (error) {
-                                                        //                 console.error(
-                                                        //                     "Failed to carry forward task:",
-                                                        //                     error,
-                                                        //                 );
-
-                                                        //                 alert(
-                                                        //                     error instanceof Error
-                                                        //                         ? error.message
-                                                        //                         : "Failed to carry forward task.",
-                                                        //                 );
-                                                        //             }
-                                                        //         }}
-                                                        //         className="rounded-md border border-emerald-500 px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50"
-                                                        //     >
-                                                        //         Carry Forward
-                                                        //     </button>
-                                                        // </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <p className="mt-2 text-xs text-gray-400">
-                                                    All tasks completed.
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </section>
-                    )}
-
-                    {isAddingTask && (
-                        <form
-                            onSubmit={async (event) => {
-                                event.preventDefault();
-
-                                try {
-                                    const response = await fetch(
-                                        `/api/tasklists/${tasklist.id}/tasks`,
-                                        {
-                                            method: "POST",
-                                            headers: {
-                                                "Content-Type":
-                                                    "application/json",
-                                            },
-                                            body: JSON.stringify({
-                                                title: taskTitle,
-                                                category: taskCategory,
-                                                estimatedMins: Number(taskEstimatedMins),
-                                                priority: taskPriority,
-                                                order:
-                                                    tasklist.tasks.filter(
-                                                        (task) => !task.parentTaskId,
-                                                    ).length + 1,
-                                            }),
-                                        },
-                                    );
-
-                                    const result = await response.json();
-
-                                    if (!response.ok) {
-                                        throw new Error(
-                                            result.error ||
-                                            "Failed to create task.",
-                                        );
-                                    }
-
-                                    setTasklist({
-                                        ...tasklist,
-                                        tasks: [
-                                            ...tasklist.tasks,
-                                            result.data,
-                                        ],
-                                    });
-
-                                    setTaskTitle("");
-                                    setTaskCategory("Development");
-                                    setTaskPriority("MEDIUM");
-                                    setTaskEstimatedMins("60");
-                                    setIsAddingTask(false);
-                                } catch (error) {
-                                    console.error(
-                                        "Failed to create task:",
-                                        error,
-                                    );
-                                    alert("Failed to create task.");
-                                }
-                            }}
-                            className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4"
-                        >
-                            <div className="grid gap-4 md:grid-cols-4">
-                                <input
-                                    type="text"
-                                    placeholder="Task title"
-                                    value={taskTitle}
-                                    onChange={(event) =>
-                                        setTaskTitle(event.target.value)
-                                    }
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                    required
-                                />
-
-                                <select
-                                    value={taskCategory}
-                                    onChange={(event) =>
-                                        setTaskCategory(event.target.value)
-                                    }
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                >
-                                    <option value="Development">
-                                        Development
-                                    </option>
-                                    <option value="Testing">Testing</option>
-                                    <option value="Documentation">
-                                        Documentation
-                                    </option>
-                                    <option value="Meeting">Meeting</option>
-                                    <option value="Non-sprint">
-                                        Non-sprint
-                                    </option>
-                                </select>
-
-                                <select
-                                    value={taskPriority}
-                                    onChange={(event) =>
-                                        setTaskPriority(event.target.value)
-                                    }
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                >
-                                    <option value="HIGH">High Priority</option>
-                                    <option value="MEDIUM">Medium Priority</option>
-                                    <option value="LOW">Low Priority</option>
-                                </select>
-
+                            <label className="flex items-center gap-2 text-muted">
+                                Available:
                                 <input
                                     type="number"
                                     min="1"
-                                    placeholder="Estimated minutes"
-                                    value={taskEstimatedMins}
+                                    step="0.5"
+                                    value={availableHours}
                                     onChange={(event) =>
-                                        setTaskEstimatedMins(
-                                            event.target.value,
-                                        )
+                                        setAvailableHours(event.target.value)
                                     }
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                    required
+                                    className="input w-16 px-2 py-1 text-center"
                                 />
-                            </div>
-
-                            <div className="mt-4 flex gap-2">
-                                <button
-                                    type="submit"
-                                    className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-                                >
-                                    Add Task
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAddingTask(false)}
-                                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    )}
-
-                    {tasklist.tasks.length === 0 ? (
-                        <p className="mt-6 text-sm text-gray-500">
-                            No tasks added yet.
-                        </p>
-                    ) : (
-                        <div className="mt-6 space-y-3">
-                            {tasklist.tasks
-                                .filter((task) => !task.parentTaskId)
-                                .sort((a, b) => a.order - b.order)
-                                .map((task) => {
-                                    const subtasks = tasklist.tasks.filter(
-                                        (subtask) =>
-                                            subtask.parentTaskId === task.id,
-                                    );
-
-                                    const totalEstimatedMins =
-                                        subtasks.length > 0
-                                            ? subtasks.reduce(
-                                                (total, subtask) =>
-                                                    total +
-                                                    subtask.estimatedMins,
-                                                0,
-                                            )
-                                            : task.estimatedMins;
-
-                                    return (
-                                        <div
-                                            key={task.id}
-                                            className="rounded-lg border border-gray-200 p-4"
-                                        >
-                                            <div className="flex items-start justify-between">
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="text-xs font-medium text-green-700">
-                                                            {task.category}
-                                                        </p>
-
-                                                        <span
-                                                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${task.priority === "HIGH"
-                                                                ? "bg-red-50 text-red-600"
-                                                                : task.priority === "LOW"
-                                                                    ? "bg-gray-100 text-gray-500"
-                                                                    : "bg-yellow-50 text-yellow-600"
-                                                                }`}
-                                                        >
-                                                            {task.priority}
-                                                        </span>
-                                                    </div>
-
-                                                    <h3 className="mt-1 font-medium text-gray-900">
-                                                        {task.order}. {task.title}
-                                                    </h3>
-                                                </div>
-
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-sm text-gray-500">
-                                                        {totalEstimatedMins / 60}h
-                                                    </span>
-
-                                                    <select
-                                                        value={task.status}
-                                                        onChange={async (event) => {
-                                                            try {
-                                                                const response = await fetch(
-                                                                    `/api/tasklists/${tasklist.id}/tasks`,
-                                                                    {
-                                                                        method: "PUT",
-                                                                        headers: {
-                                                                            "Content-Type": "application/json",
-                                                                        },
-                                                                        body: JSON.stringify({
-                                                                            taskId: task.id,
-                                                                            status: event.target.value,
-                                                                        }),
-                                                                    },
-                                                                );
-
-                                                                const result = await response.json();
-
-                                                                if (!response.ok) {
-                                                                    throw new Error(
-                                                                        result.error || "Failed to update status.",
-                                                                    );
-                                                                }
-
-                                                                setTasklist({
-                                                                    ...tasklist,
-                                                                    tasks: tasklist.tasks.map((item) =>
-                                                                        item.id === task.id ? result.data : item,
-                                                                    ),
-                                                                });
-                                                            } catch (error) {
-                                                                console.error(
-                                                                    "Failed to update task status:",
-                                                                    error,
-                                                                );
-
-                                                                alert("Failed to update task status.");
-                                                            }
-                                                        }}
-                                                        disabled={!!tasklist.eodCapturedAt}
-                                                        className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        <option value="PENDING">Pending</option>
-                                                        <option value="IN_PROGRESS">In Progress</option>
-                                                        <option value="DONE">Done</option>
-                                                        <option value="BLOCKED">Blocked</option>
-                                                    </select>
-
-                                                    {/* Task 'Edit' button */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setEditingTaskId(task.id);
-                                                            setEditTaskTitle(task.title);
-                                                            setEditTaskCategory(task.category);
-                                                            setEditTaskPriority(task.priority);
-                                                            setEditTaskEstimatedMins(String(task.estimatedMins));
-                                                        }}
-                                                        disabled={!!tasklist.eodCapturedAt}
-                                                        className="text-sm font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
-                                                    >
-                                                        Edit
-                                                    </button>
-
-                                                    {/* Task 'Delete' button */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            if (!confirm(`Delete "${task.title}"?`)) {
-                                                                return;
-                                                            }
-
-                                                            try {
-                                                                const response = await fetch(
-                                                                    `/api/tasklists/${tasklist.id}/tasks?taskId=${task.id}`,
-                                                                    {
-                                                                        method: "DELETE",
-                                                                    },
-                                                                );
-
-                                                                const result = await response.json();
-
-                                                                if (!response.ok) {
-                                                                    throw new Error(
-                                                                        result.error || "Failed to delete task.",
-                                                                    );
-                                                                }
-
-                                                                setTasklist({
-                                                                    ...tasklist,
-                                                                    tasks: tasklist.tasks.filter(
-                                                                        (item) =>
-                                                                            item.id !== task.id &&
-                                                                            item.parentTaskId !== task.id,
-                                                                    ),
-                                                                });
-                                                            } catch (error) {
-                                                                console.error("Failed to delete task:", error);
-                                                                alert("Failed to delete task.");
-                                                            }
-                                                        }}
-                                                        disabled={!!tasklist.eodCapturedAt}
-                                                        className="text-xs font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-
-                                            </div>
-
-                                            {/* Editing Task */}
-                                            {editingTaskId === task.id && (
-                                                <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                                                    <div className="grid gap-4 md:grid-cols-3">
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Task title"
-                                                            value={editTaskTitle}
-                                                            onChange={(event) =>
-                                                                setEditTaskTitle(event.target.value)
-                                                            }
-                                                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                        />
-
-                                                        <select
-                                                            value={editTaskCategory}
-                                                            onChange={(event) =>
-                                                                setEditTaskCategory(event.target.value)
-                                                            }
-                                                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                        >
-                                                            <option value="Development">Development</option>
-                                                            <option value="Testing">Testing</option>
-                                                            <option value="Documentation">
-                                                                Documentation
-                                                            </option>
-                                                            <option value="Meeting">Meeting</option>
-                                                            <option value="Non-sprint">Non-sprint</option>
-                                                        </select>
-
-                                                        <div>
-                                                            <label className="mb-1 block text-xs font-medium text-gray-600">
-                                                                Priority
-                                                            </label>
-
-                                                            <select
-                                                                value={editTaskPriority}
-                                                                onChange={(event) =>
-                                                                    setEditTaskPriority(event.target.value)
-                                                                }
-                                                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                            >
-                                                                <option value="HIGH">High Priority</option>
-                                                                <option value="MEDIUM">Medium Priority</option>
-                                                                <option value="LOW">Low Priority</option>
-                                                            </select>
-                                                        </div>
-
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            placeholder="Estimated minutes"
-                                                            value={editTaskEstimatedMins}
-                                                            onChange={(event) =>
-                                                                setEditTaskEstimatedMins(
-                                                                    event.target.value,
-                                                                )
-                                                            }
-                                                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                        />
-                                                    </div>
-
-                                                    <div className="mt-4 flex gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={async () => {
-                                                                try {
-                                                                    const response = await fetch(
-                                                                        `/api/tasklists/${tasklist.id}/tasks`,
-                                                                        {
-                                                                            method: "PUT",
-                                                                            headers: {
-                                                                                "Content-Type": "application/json",
-                                                                            },
-                                                                            body: JSON.stringify({
-                                                                                taskId: task.id,
-                                                                                title: editTaskTitle,
-                                                                                category: editTaskCategory,
-                                                                                estimatedMins: Number(editTaskEstimatedMins),
-                                                                                status: task.status,
-                                                                                priority: editTaskPriority,
-                                                                            }),
-                                                                        },
-                                                                    );
-
-                                                                    const result = await response.json();
-
-                                                                    if (!response.ok) {
-                                                                        throw new Error(
-                                                                            result.error || "Failed to update task.",
-                                                                        );
-                                                                    }
-
-                                                                    setTasklist({
-                                                                        ...tasklist,
-                                                                        tasks: tasklist.tasks.map((item) =>
-                                                                            item.id === task.id ? result.data : item,
-                                                                        ),
-                                                                    });
-
-                                                                    setEditingTaskId(null);
-                                                                } catch (error) {
-                                                                    console.error("Failed to update task:", error);
-                                                                    alert("Failed to update task.");
-                                                                }
-                                                            }}
-                                                            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-                                                        >
-                                                            Save
-                                                        </button>
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setEditingTaskId(null)}
-                                                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Add Subtask */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setAddingSubtaskFor(
-                                                        task.id,
-                                                    );
-                                                    setSubtaskTitle("");
-                                                    setSubtaskEstimatedMins(
-                                                        "60",
-                                                    );
-                                                }}
-                                                className="mt-3 text-sm font-medium text-emerald-600 hover:text-emerald-700"
-                                            >
-                                                + Add Subtask
-                                            </button>
-
-                                            {addingSubtaskFor === task.id && (
-                                                <form
-                                                    onSubmit={async (event) => {
-                                                        event.preventDefault();
-
-                                                        try {
-                                                            const existingSubtasks =
-                                                                tasklist.tasks.filter(
-                                                                    (subtask) =>
-                                                                        subtask.parentTaskId ===
-                                                                        task.id,
-                                                                );
-
-                                                            const response =
-                                                                await fetch(
-                                                                    `/api/tasklists/${tasklist.id}/tasks`,
-                                                                    {
-                                                                        method: "POST",
-                                                                        headers: {
-                                                                            "Content-Type":
-                                                                                "application/json",
-                                                                        },
-                                                                        body: JSON.stringify(
-                                                                            {
-                                                                                title: subtaskTitle,
-                                                                                category:
-                                                                                    task.category,
-                                                                                estimatedMins:
-                                                                                    Number(
-                                                                                        subtaskEstimatedMins,
-                                                                                    ),
-                                                                                order:
-                                                                                    existingSubtasks.length +
-                                                                                    1,
-                                                                                parentTaskId:
-                                                                                    task.id,
-                                                                            },
-                                                                        ),
-                                                                    },
-                                                                );
-
-                                                            const result =
-                                                                await response.json();
-
-                                                            if (!response.ok) {
-                                                                throw new Error(
-                                                                    result.error ||
-                                                                    "Failed to create subtask.",
-                                                                );
-                                                            }
-
-                                                            setTasklist({
-                                                                ...tasklist,
-                                                                tasks: [
-                                                                    ...tasklist.tasks,
-                                                                    result.data,
-                                                                ],
-                                                            });
-
-                                                            setSubtaskTitle("");
-                                                            setSubtaskEstimatedMins(
-                                                                "60",
-                                                            );
-                                                            setAddingSubtaskFor(
-                                                                null,
-                                                            );
-                                                        } catch (error) {
-                                                            console.error(
-                                                                "Failed to create subtask:",
-                                                                error,
-                                                            );
-                                                            alert(
-                                                                "Failed to create subtask.",
-                                                            );
-                                                        }
-                                                    }}
-                                                    className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
-                                                >
-                                                    <div className="flex gap-3">
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Subtask title"
-                                                            value={
-                                                                subtaskTitle
-                                                            }
-                                                            onChange={(
-                                                                event,
-                                                            ) =>
-                                                                setSubtaskTitle(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                            required
-                                                        />
-
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            placeholder="Minutes"
-                                                            value={
-                                                                subtaskEstimatedMins
-                                                            }
-                                                            onChange={(
-                                                                event,
-                                                            ) =>
-                                                                setSubtaskEstimatedMins(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            className="w-32 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                            required
-                                                        />
-                                                    </div>
-
-                                                    <div className="mt-3 flex gap-2">
-                                                        <button
-                                                            type="submit"
-                                                            className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-                                                        >
-                                                            Add Subtask
-                                                        </button>
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setAddingSubtaskFor(
-                                                                    null,
-                                                                )
-                                                            }
-                                                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </form>
-                                            )}
-
-                                            {subtasks.length > 0 && (
-                                                <div className="mt-3 space-y-2 pl-4">
-                                                    {subtasks
-                                                        .sort((a, b) => a.order - b.order)
-                                                        .map((subtask) => (
-                                                            <div
-                                                                key={subtask.id}
-                                                                className="flex items-center justify-between text-sm text-gray-700"
-                                                            >
-                                                                <div>
-                                                                    <span>
-                                                                        {task.order}.{subtask.order}{" "}
-                                                                        {subtask.title}
-                                                                    </span>
-
-                                                                    <span className="ml-2 text-gray-500">
-                                                                        — {subtask.estimatedMins / 60}h
-                                                                    </span>
-                                                                </div>
-
-                                                                <select
-                                                                    value={subtask.status}
-                                                                    onChange={async (event) => {
-                                                                        try {
-                                                                            const response = await fetch(
-                                                                                `/api/tasklists/${tasklist.id}/tasks`,
-                                                                                {
-                                                                                    method: "PUT",
-                                                                                    headers: {
-                                                                                        "Content-Type": "application/json",
-                                                                                    },
-                                                                                    body: JSON.stringify({
-                                                                                        taskId: subtask.id,
-                                                                                        status: event.target.value,
-                                                                                    }),
-                                                                                },
-                                                                            );
-
-                                                                            const result = await response.json();
-
-                                                                            if (!response.ok) {
-                                                                                throw new Error(
-                                                                                    result.error || "Failed to update status.",
-                                                                                );
-                                                                            }
-
-                                                                            setTasklist({
-                                                                                ...tasklist,
-                                                                                tasks: tasklist.tasks.map((item) =>
-                                                                                    item.id === subtask.id ? result.data : item,
-                                                                                ),
-                                                                            });
-                                                                        } catch (error) {
-                                                                            console.error(
-                                                                                "Failed to update subtask status:",
-                                                                                error,
-                                                                            );
-
-                                                                            alert("Failed to update subtask status.");
-                                                                        }
-                                                                    }}
-                                                                    disabled={!!tasklist.eodCapturedAt}
-                                                                    className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                                                >
-                                                                    <option value="PENDING">Pending</option>
-                                                                    <option value="IN_PROGRESS">In Progress</option>
-                                                                    <option value="DONE">Done</option>
-                                                                    <option value="BLOCKED">Blocked</option>
-                                                                </select>
-
-                                                                {/* Subtask Edit button */}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setEditingSubtaskId(subtask.id);
-                                                                        setEditSubtaskTitle(subtask.title);
-                                                                        setEditSubtaskEstimatedMins(
-                                                                            String(subtask.estimatedMins),
-                                                                        );
-                                                                    }}
-                                                                    disabled={!!tasklist.eodCapturedAt}
-                                                                    className="text-xs font-medium text-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                                >
-                                                                    Edit
-                                                                </button>
-                                                                {editingSubtaskId === subtask.id && (
-                                                                    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                                                                        <div className="flex gap-3">
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder="Subtask title"
-                                                                                value={editSubtaskTitle}
-                                                                                onChange={(event) =>
-                                                                                    setEditSubtaskTitle(event.target.value)
-                                                                                }
-                                                                                className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                                            />
-
-                                                                            <input
-                                                                                type="number"
-                                                                                min="1"
-                                                                                placeholder="Minutes"
-                                                                                value={editSubtaskEstimatedMins}
-                                                                                onChange={(event) =>
-                                                                                    setEditSubtaskEstimatedMins(
-                                                                                        event.target.value,
-                                                                                    )
-                                                                                }
-                                                                                className="w-32 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                                                                            />
-                                                                        </div>
-
-                                                                        <div className="mt-3 flex gap-2">
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={async () => {
-                                                                                    try {
-                                                                                        const response = await fetch(
-                                                                                            `/api/tasklists/${tasklist.id}/tasks`,
-                                                                                            {
-                                                                                                method: "PUT",
-                                                                                                headers: {
-                                                                                                    "Content-Type":
-                                                                                                        "application/json",
-                                                                                                },
-                                                                                                body: JSON.stringify({
-                                                                                                    taskId: subtask.id,
-                                                                                                    title: editSubtaskTitle,
-                                                                                                    estimatedMins: Number(
-                                                                                                        editSubtaskEstimatedMins,
-                                                                                                    ),
-                                                                                                }),
-                                                                                            },
-                                                                                        );
-
-                                                                                        const result = await response.json();
-
-                                                                                        if (!response.ok) {
-                                                                                            throw new Error(
-                                                                                                result.error ||
-                                                                                                "Failed to update subtask.",
-                                                                                            );
-                                                                                        }
-
-                                                                                        setTasklist({
-                                                                                            ...tasklist,
-                                                                                            tasks: tasklist.tasks.map((item) =>
-                                                                                                item.id === subtask.id
-                                                                                                    ? result.data
-                                                                                                    : item,
-                                                                                            ),
-                                                                                        });
-
-                                                                                        setEditingSubtaskId(null);
-                                                                                    } catch (error) {
-                                                                                        console.error(
-                                                                                            "Failed to update subtask:",
-                                                                                            error,
-                                                                                        );
-
-                                                                                        alert("Failed to update subtask.");
-                                                                                    }
-                                                                                }}
-                                                                                className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-                                                                            >
-                                                                                Save
-                                                                            </button>
-
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => setEditingSubtaskId(null)}
-                                                                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
-                                                                            >
-                                                                                Cancel
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Subtask Delete button */}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={async () => {
-                                                                        if (
-                                                                            !confirm(
-                                                                                `Delete "${subtask.title}"?`,
-                                                                            )
-                                                                        ) {
-                                                                            return;
-                                                                        }
-
-                                                                        try {
-                                                                            const response = await fetch(
-                                                                                `/api/tasklists/${tasklist.id}/tasks?taskId=${subtask.id}`,
-                                                                                {
-                                                                                    method: "DELETE",
-                                                                                },
-                                                                            );
-
-                                                                            const result = await response.json();
-
-                                                                            if (!response.ok) {
-                                                                                throw new Error(
-                                                                                    result.error ||
-                                                                                    "Failed to delete subtask.",
-                                                                                );
-                                                                            }
-
-                                                                            setTasklist({
-                                                                                ...tasklist,
-                                                                                tasks: tasklist.tasks.filter(
-                                                                                    (item) =>
-                                                                                        item.id !== subtask.id,
-                                                                                ),
-                                                                            });
-                                                                        } catch (error) {
-                                                                            console.error(
-                                                                                "Failed to delete subtask:",
-                                                                                error,
-                                                                            );
-
-                                                                            alert("Failed to delete subtask.");
-                                                                        }
-                                                                    }}
-                                                                    disabled={!!tasklist.eodCapturedAt}
-                                                                    className="text-xs font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                                                >
-                                                                    Delete
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                </div>
-                                            )}
-
-                                        </div>
-                                    );
-                                })}
+                                h
+                            </label>
                         </div>
-                    )}
-                </section>
-            </div>
-        </main>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted">
+                            {tasklist.tasks.length} tasks
+                        </span>
+
+                        {/* SOD - Start of Day button */}
+                        <button
+                            type="button"
+                            disabled={isCapturingSod || !!tasklist.sodCapturedAt}
+                            onClick={() => handleCapture("SOD")}
+                            className="btn-secondary"
+                        >
+                            {isCapturingSod
+                                ? "Capturing..."
+                                : tasklist.sodCapturedAt
+                                    ? "SOD Captured"
+                                    : "Start Day"}
+                        </button>
+
+                        {/* EOD - End of Day button */}
+                        <button
+                            type="button"
+                            disabled={isCapturingEod || isLocked}
+                            onClick={() => handleCapture("EOD")}
+                            className="btn-secondary"
+                        >
+                            {isCapturingEod
+                                ? "Capturing..."
+                                : isLocked
+                                    ? "EOD Captured"
+                                    : "End Day"}
+                        </button>
+
+                        {/* Add Task button */}
+                        <button
+                            type="button"
+                            onClick={() => setIsAddingTask(true)}
+                            disabled={isLocked}
+                            className="btn-primary"
+                        >
+                            + Add Task
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    className={`mt-4 rounded-lg px-4 py-3 text-sm ${isOverCapacity
+                        ? "bg-red-50 text-red-700"
+                        : "bg-brand-soft text-brand-strong"
+                        }`}
+                >
+                    {isOverCapacity ? "Over capacity by" : "Remaining capacity:"}{" "}
+                    <strong>
+                        {capacityHours > 0 && `${capacityHours}h `}
+                        {capacityMinutes > 0 && `${capacityMinutes}m`}
+                    </strong>
+                </div>
+
+                {snapshots.length > 0 && <DaySummary snapshots={snapshots} />}
+
+                {isAddingTask && (
+                    <AddTaskForm
+                        tasklistId={tasklist.id}
+                        nextOrder={parentTasks.length + 1}
+                        onCreated={(task) => {
+                            handleTaskCreated(task);
+                            setIsAddingTask(false);
+                        }}
+                        onCancel={() => setIsAddingTask(false)}
+                        onError={(message) => showNotice("error", message)}
+                    />
+                )}
+
+                {tasklist.tasks.length === 0 ? (
+                    <p className="empty-state mt-6">No tasks added yet.</p>
+                ) : (
+                    <div className="mt-6 space-y-3">
+                        {parentTasks.map((task) => (
+                            <TaskCard
+                                key={task.id}
+                                tasklistId={tasklist.id}
+                                task={task}
+                                subtasks={tasklist.tasks.filter(
+                                    (subtask) =>
+                                        subtask.parentTaskId === task.id,
+                                )}
+                                locked={isLocked}
+                                onCreated={handleTaskCreated}
+                                onUpdated={handleTaskUpdated}
+                                onDeleted={handleTaskDeleted}
+                                onError={(message) =>
+                                    showNotice("error", message)
+                                }
+                            />
+                        ))}
+                    </div>
+                )}
+            </section>
+        </PageContainer>
     );
 }

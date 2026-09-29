@@ -10,6 +10,8 @@ This document records the functionality implemented and verified so far in the I
 
 The purpose is to provide a single reference for the completed work before moving on to the next feature set.
 
+*Last checked against the code: 29 September 2026. Corrections made in that check are marked "(updated)".*
+
 ---
 
 ## Guiding principles carried through the implementation
@@ -41,11 +43,12 @@ The purpose is to provide a single reference for the completed work before movin
 - The proposal includes sprint-related information and associated functions.
 - Sprint proposals can be persisted in the database.
 - Saved sprints are visible in the application after creation.
-- The system handles AI responses that may be returned inside Markdown JSON code fences.
+- The Plan Sprint page (`/sprint-proposal`) calls `/api/sprint-planning`, which runs the AI planning steps in order (requirement analysis, task breakdown, dependency analysis, dependency validation and correction, skill identification, task estimation), builds the proposal, and saves it.
+- The skill identification step handles AI responses that are returned inside Markdown JSON code fences (updated: this is not applied to the other steps, see limitations).
 
 ## Implementation details
 
-- Added handling for AI responses wrapped in fenced blocks such as:
+- Added handling in `skill-identification.ts` for AI responses wrapped in fenced blocks such as:
 
   ```text
   ```json
@@ -68,6 +71,8 @@ The purpose is to provide a single reference for the completed work before movin
 
 - AI-generated output must still be validated before being treated as final planning decisions.
 - The quality of the generated sprint proposal depends on the quality and completeness of the requirements supplied.
+- (Updated) Only the skill identification step strips Markdown code fences. The other six steps call `JSON.parse` on the raw AI response, so a fenced response in any of them would fail. A shared cleanup helper would fix this.
+- (Updated) The older single-call route `/api/sprint-proposal` and its helper files were removed because nothing used them.
 
 ---
 
@@ -137,6 +142,8 @@ The frontend displays each dependency using:
 {dependency.dependsOn.taskId} - {dependency.dependsOn.title}
 ```
 
+Multiple dependencies are shown as one comma-separated line.
+
 ## How it helps the workflow
 
 - Makes task sequencing easier to understand.
@@ -151,7 +158,7 @@ The frontend displays each dependency using:
 
 ---
 
-# 4. AI-Assisted Assignee Recommendation
+# 4. Assignee Recommendation and Manual Assignment (updated)
 
 ## Intent
 
@@ -162,6 +169,7 @@ The frontend displays each dependency using:
 
 - Users can request an assignee recommendation for a task.
 - The recommended member can be assigned directly through the interface.
+- Users can also assign any team member manually from a dropdown on each task.
 
 ## Current solution
 
@@ -171,8 +179,9 @@ The frontend displays each dependency using:
   /api/assignment/task-recommendation
   ```
 
-- The sprint detail page includes a `Recommend Assignee` action.
-- The recommendation result contains a recommended member.
+- The sprint detail page includes a `Recommend Assignee` action and an `Assign Manually` dropdown.
+- The recommendation is rule-based, not AI-generated: the task's required skills are compared with each member's skills, and candidates are ranked by skill match percentage. The top candidate is recommended and the match percentage is shown.
+- A task with no required skills returns no candidates.
 - The existing `Assign` action uses the recommended member's ID to assign the task.
 
 ## Implementation details
@@ -201,7 +210,7 @@ if (recommendedMember) {
 ## Assumptions and limitations
 
 - Recommendations should be treated as assistance rather than automatic final decisions.
-- Recommendation quality depends on the available member, skill, and task information.
+- Recommendation quality depends on the available member, skill, and task information. Workload and availability are not part of the ranking.
 - The recommendation endpoint must remain available for the UI action to work.
 
 ---
@@ -302,6 +311,12 @@ The document creation helper validates:
 - The selected sprint must exist when a sprint ID is provided.
 - Tags are normalized and deduplicated.
 
+Other API behavior:
+
+- A missing file for an upload document returns 400.
+- The `UPLOAD` source type returns 501 with the message that file storage and document extraction are not implemented yet.
+- (Updated) Validation errors from the creation helper (for example a missing title) currently come back as a 500 with the generic message "Failed to process document." instead of a 400 with the specific message.
+
 ## Tag handling
 
 Tags are:
@@ -332,7 +347,7 @@ Tags are:
 
 - A Documentation section was added to the sprint detail page.
 - The section displays documents associated with the current sprint.
-- Users can open an Add Document modal from the sprint page.
+- Users can open an Add Document modal from the sprint page; documents added there are attached to that sprint automatically.
 
 ## Current solution
 
@@ -413,7 +428,7 @@ Each card can display:
 - Manual content preview
 - External URL
 - Tags
-- Creation date
+- Creation date (shown as, for example, 29 Sep 2026)
 - Associated sprint name, when applicable
 
 ## How it helps the workflow
@@ -435,7 +450,8 @@ Each card can display:
 
 - An Add Document modal was implemented.
 - The modal opens from the Add Document button.
-- The modal can be closed using the Cancel action or close icon.
+- The modal can be closed using the Cancel action, the close icon, or the Escape key.
+- (Updated) The modal is one shared component, `src/components/documents/AddDocumentModal.tsx`, used by both the Documentation page and the sprint page.
 
 ## Current solution
 
@@ -446,7 +462,7 @@ The modal contains fields for:
 - Source type
 - Content or URL depending on source type
 - Tags
-- Sprint association
+- Sprint association (a dropdown on the Documentation page; fixed to the current sprint on the sprint page)
 
 The source type selector currently supports:
 
@@ -487,6 +503,8 @@ The frontend currently accepts:
 - Allows the same document creation concept to be used from multiple locations.
 - Makes the source type explicit before submission.
 
+Errors (such as a missing file or a failed save) appear inline inside the modal. The form starts empty every time it is opened, and labels are linked to their fields.
+
 ---
 
 # 10. General Documentation and Sprint Association
@@ -498,8 +516,9 @@ The frontend currently accepts:
 
 ## Outcome
 
-- The Add Document modal includes an optional sprint selector.
+- The Add Document modal on the Documentation page includes an optional sprint selector.
 - Users can select a sprint or keep the default General Documentation option.
+- On the sprint page there is no selector, because the document belongs to that sprint.
 
 ## Current solution
 
@@ -576,7 +595,7 @@ The related sprint is loaded through the document query's sprint relationship.
 | Associate document with a sprint | Completed and verified |
 | Keep document as general documentation | Completed and verified |
 | Display associated sprint name | Completed and verified |
-| Select a file for upload | Frontend implemented |
+| Select a file for upload | Frontend implemented (saving shows the "not implemented yet" message) |
 | Store uploaded files | Not implemented |
 | Extract uploaded document text | Not implemented |
 | Search documentation | Deferred |
@@ -667,7 +686,20 @@ The following functionality was tested successfully during implementation:
 - General Documentation creation
 - Display of associated sprint names
 
+(Updated) The shared modal, inline error messages, Escape-to-close and the single date format were added after this testing round. They passed a TypeScript check but have not been re-tested in the running application.
+
 The Upload Document option currently reaches the intended temporary limitation message because file storage and document extraction have not yet been implemented.
+
+---
+
+# 15. Other functionality added since (updated)
+
+These items are outside the documentation feature but are part of the current application.
+
+- **Daily tasklist page (`/tasklist`).** Each team member has a tasklist per day with tasks and subtasks (category, priority, estimate, status), edit and delete, a planned-versus-available capacity check, and start-of-day and end-of-day snapshots. A team member dropdown chooses whose tasklist is shown. After end of day is captured the tasklist is locked. The page is built from components in `src/components/tasklist/`.
+- **Carry forward API.** Tasks can be carried into another tasklist through the tasklist API; a locked target tasklist returns 409. There is no button for it in the UI yet.
+- **Team page (`/team-members`).** Lists team members and their skills. Adding members from the UI is not built yet, although the API supports it.
+- **Shared look and feel.** All pages use the shared classes and colour tokens in `src/app/globals.css`, one date format (`src/lib/format-date.ts`), and inline messages instead of browser alert popups.
 
 ---
 

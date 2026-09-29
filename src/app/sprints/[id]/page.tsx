@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import PageContainer from "@/components/layout/PageContainer";
+import PageHeader from "@/components/layout/PageHeader";
+import { formatDate } from "@/lib/format-date";
+import AddDocumentModal, {
+    type Document,
+} from "@/components/documents/AddDocumentModal";
 
 type Task = {
     id: string;
@@ -78,30 +84,27 @@ type AssignmentRecommendation = {
     }[];
 };
 
-type Document = {
-    id: string;
-    title: string;
-    type: string;
-    sourceType: "DOCUMENT" | "LINK" | "UPLOAD";
-    content: string | null;
-    url: string | null;
-    source: "MANUAL" | "AI_GENERATED";
-    createdAt: string;
-    tags: {
-        tag: {
-            id: string;
-            name: string;
-        };
-    }[];
-};
-
 type TeamMember = {
     id: string;
     name: string;
     role: string;
 };
 
+const sprintStatusStyles: Record<Sprint["status"], string> = {
+    PLANNED: "badge-muted",
+    ACTIVE: "badge-brand",
+    COMPLETED: "badge-brand",
+    CANCELLED: "badge-danger",
+};
+
+const complexityStyles: Record<Task["complexity"], string> = {
+    LOW: "badge-brand",
+    MEDIUM: "badge-warning",
+    HIGH: "badge-danger",
+};
+
 export default function SprintDetailPage() {
+    const { id: sprintId } = useParams<{ id: string }>();
     // States
     const [sprint, setSprint] = useState<Sprint | null>(null);
     const [progress, setProgress] = useState<SprintProgress | null>(null);
@@ -111,17 +114,10 @@ export default function SprintDetailPage() {
     // Dcocumentation States
     const [documents, setDocuments] = useState<Document[]>([]);
     const [isDocumentFormOpen, setIsDocumentFormOpen] = useState(false);
-    const [documentTitle, setDocumentTitle] = useState("");
-    const [documentType, setDocumentType] = useState("");
-    const [documentSourceType, setDocumentSourceType] = useState<"DOCUMENT" | "LINK" | "UPLOAD">("DOCUMENT");
-    const [documentContent, setDocumentContent] = useState("");
-    const [documentUrl, setDocumentUrl] = useState("");
-    const [documentFile, setDocumentFile] = useState<File | null>(null);
-    const [documentTags, setDocumentTags] = useState("");
-    const [isCreatingDocument, setIsCreatingDocument] = useState(false);
 
     // Loading & Errors
     const [error, setError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [loadingRecommendation, setLoadingRecommendation] = useState<string | null>(null);
     const [isActivating, setIsActivating] = useState(false);
@@ -129,9 +125,6 @@ export default function SprintDetailPage() {
     useEffect(() => {
         async function fetchSprint() {
             try {
-                const sprintId =
-                    window.location.pathname.split("/").pop();
-
                 const [sprintResponse, progressResponse, documentsResponse] =
                     await Promise.all([
                         fetch(`/api/sprints/${sprintId}`),
@@ -180,7 +173,7 @@ export default function SprintDetailPage() {
         }
 
         fetchSprint();
-    }, []);
+    }, [sprintId]);
 
     useEffect(() => {
         async function fetchTeamMembers() {
@@ -212,7 +205,7 @@ export default function SprintDetailPage() {
 
         try {
             setIsActivating(true);
-            setError(null);
+            setActionError(null);
 
             const response = await fetch(
                 `/api/sprints/${sprint.id}/activate`,
@@ -240,7 +233,7 @@ export default function SprintDetailPage() {
         } catch (error) {
             console.error("Failed to activate sprint:", error);
 
-            setError(
+            setActionError(
                 error instanceof Error
                     ? error.message
                     : "Failed to activate sprint.",
@@ -258,6 +251,8 @@ export default function SprintDetailPage() {
         if (!sprint) return;
 
         try {
+            setActionError(null);
+
             const response = await fetch(
                 `/api/sprints/${sprint.id}/tasks/${taskId}/status`,
                 {
@@ -310,7 +305,7 @@ export default function SprintDetailPage() {
         } catch (error) {
             console.error("Failed to update task status:", error);
 
-            setError(
+            setActionError(
                 error instanceof Error
                     ? error.message
                     : "Failed to update task status.",
@@ -322,7 +317,7 @@ export default function SprintDetailPage() {
     async function handleRecommendAssignee(taskId: string) {
         try {
             setLoadingRecommendation(taskId);
-            setError(null);
+            setActionError(null);
 
             const response = await fetch(
                 "/api/assignment/task-recommendation",
@@ -354,7 +349,7 @@ export default function SprintDetailPage() {
                 error,
             );
 
-            setError(
+            setActionError(
                 error instanceof Error
                     ? error.message
                     : "Failed to get assignment recommendation.",
@@ -372,7 +367,7 @@ export default function SprintDetailPage() {
         if (!sprint) return;
 
         try {
-            setError(null);
+            setActionError(null);
 
             const response = await fetch(
                 `/api/sprints/${sprint.id}/tasks/${taskId}/assignment`,
@@ -412,7 +407,7 @@ export default function SprintDetailPage() {
         } catch (error) {
             console.error("Failed to assign task:", error);
 
-            setError(
+            setActionError(
                 error instanceof Error
                     ? error.message
                     : "Failed to assign task.",
@@ -428,7 +423,7 @@ export default function SprintDetailPage() {
         if (!sprint) return;
 
         try {
-            setError(null);
+            setActionError(null);
 
             const response = await fetch(
                 `/api/sprints/${sprint.id}/tasks/${taskId}/assignment`,
@@ -471,7 +466,7 @@ export default function SprintDetailPage() {
                 error,
             );
 
-            setError(
+            setActionError(
                 error instanceof Error
                     ? error.message
                     : "Failed to assign task.",
@@ -479,142 +474,76 @@ export default function SprintDetailPage() {
         }
     }
 
-    // Handle Create Document
-    const handleCreateDocument = async (
-        event: React.FormEvent<HTMLFormElement>,
-    ) => {
-        event.preventDefault();
-
-        if (!sprint) {
-            alert("Sprint details are not available.");
-            return;
-        }
-
-        if (documentSourceType === "UPLOAD" && !documentFile) {
-            alert("Please select a document to upload.");
-            return;
-        }
-
-        setIsCreatingDocument(true);
-
-        try {
-            const formData = new FormData();
-
-            formData.append("title", documentTitle);
-            formData.append("type", documentType);
-            formData.append("sourceType", documentSourceType);
-            formData.append("sprintId", sprint.id);
-            formData.append("tagNames", documentTags);
-
-            if (documentSourceType === "DOCUMENT") {
-                formData.append("content", documentContent);
-            }
-
-            if (documentSourceType === "LINK") {
-                formData.append("url", documentUrl);
-            }
-
-            if (documentSourceType === "UPLOAD" && documentFile) {
-                formData.append("file", documentFile);
-            }
-
-            const response = await fetch("/api/documents", {
-                method: "POST",
-                body: formData,
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result.error || "Failed to create document.",
-                );
-            }
-
-            setDocuments((current) => [result.data, ...current]);
-
-            setDocumentTitle("");
-            setDocumentType("");
-            setDocumentSourceType("DOCUMENT");
-            setDocumentContent("");
-            setDocumentUrl("");
-            setDocumentTags("");
-            setDocumentFile(null);
-            setIsDocumentFormOpen(false);
-        } catch (error) {
-            console.error("Failed to create document:", error);
-
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to create document.",
-            );
-        } finally {
-            setIsCreatingDocument(false);
-        }
-    };
-
     if (isLoading) {
-        return <main className="p-8">Loading sprint...</main>;
+        return (
+            <PageContainer>
+                <p className="text-sm text-muted">Loading sprint...</p>
+            </PageContainer>
+        );
     }
 
     if (error) {
         return (
-            <main className="p-8 text-red-600">
-                {error}
-            </main>
+            <PageContainer>
+                <p className="alert-error">{error}</p>
+            </PageContainer>
         );
     }
 
     if (!sprint) {
-        return <main className="p-8">Sprint not found.</main>;
+        return (
+            <PageContainer>
+                <p className="empty-state">Sprint not found.</p>
+            </PageContainer>
+        );
     }
 
     return (
         <PageContainer>
-            <h1 className="text-3xl font-semibold">
-                {sprint.name}
-            </h1>
+            <PageHeader
+                title={sprint.name}
+                description={sprint.goal}
+                action={
+                    <div className="flex items-center gap-3">
+                        <span
+                            className={`badge ${sprintStatusStyles[sprint.status]}`}
+                        >
+                            {sprint.status}
+                        </span>
 
-            <p className="mt-2 text-[#5F6B64]">
-                {sprint.goal}
-            </p>
+                        {sprint.status === "PLANNED" && (
+                            <button
+                                type="button"
+                                onClick={handleActivateSprint}
+                                disabled={isActivating}
+                                className="btn-primary"
+                            >
+                                {isActivating
+                                    ? "Activating..."
+                                    : "Activate Sprint"}
+                            </button>
+                        )}
+                    </div>
+                }
+            />
 
-            <div className="mt-6 flex flex-wrap gap-4 text-sm">
+            <div className="-mt-4 mb-8 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
                 <span>
-                    {new Date(
-                        sprint.startDate,
-                    ).toLocaleDateString()}{" "}
-                    →{" "}
-                    {new Date(
-                        sprint.endDate,
-                    ).toLocaleDateString()}
+                    {formatDate(sprint.startDate)} →{" "}
+                    {formatDate(sprint.endDate)}
                 </span>
 
-                <span>
-                    {sprint.totalEstimatedHours} hours
-                </span>
+                <span>{sprint.totalEstimatedHours} hours</span>
             </div>
 
-            <div className="mt-6 flex items-center gap-4">
-                <span className="rounded-full bg-[#E8F6EF] px-3 py-1 text-sm font-medium">
-                    {sprint.status}
-                </span>
-
-                {sprint.status === "PLANNED" && (
-                    <button
-                        type="button"
-                        onClick={handleActivateSprint}
-                        disabled={isActivating}
-                        className="rounded-xl bg-[#8CC9A8] px-4 py-2 text-sm font-medium text-[#1F2924] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {isActivating ? "Activating..." : "Activate Sprint"}
-                    </button>
-                )}
-            </div>
+            {actionError && (
+                <p className="alert-error mb-6" role="alert">
+                    {actionError}
+                </p>
+            )}
 
             {progress && (
-                <section className="mt-8 rounded-2xl border border-[#DDE8E1] bg-white p-6 shadow-sm">
+                <section className="card">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold">
                             Sprint Progress
@@ -625,9 +554,9 @@ export default function SprintDetailPage() {
                         </span>
                     </div>
 
-                    <div className="mt-4 h-3 overflow-hidden rounded-full bg-[#E8F6EF]">
+                    <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-brand-soft">
                         <div
-                            className="h-full rounded-full bg-[#8CC9A8]"
+                            className="h-full rounded-full bg-brand"
                             style={{
                                 width: `${progress.progressPercentage}%`,
                             }}
@@ -636,36 +565,28 @@ export default function SprintDetailPage() {
 
                     <div className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
                         <div>
-                            <p className="text-[#5F6B64]">
-                                To Do
-                            </p>
+                            <p className="text-muted">To Do</p>
                             <p className="mt-1 text-lg font-semibold">
                                 {progress.todoTasks}
                             </p>
                         </div>
 
                         <div>
-                            <p className="text-[#5F6B64]">
-                                In Progress
-                            </p>
+                            <p className="text-muted">In Progress</p>
                             <p className="mt-1 text-lg font-semibold">
                                 {progress.inProgressTasks}
                             </p>
                         </div>
 
                         <div>
-                            <p className="text-[#5F6B64]">
-                                Done
-                            </p>
+                            <p className="text-muted">Done</p>
                             <p className="mt-1 text-lg font-semibold">
                                 {progress.doneTasks}
                             </p>
                         </div>
 
                         <div>
-                            <p className="text-[#5F6B64]">
-                                Blocked
-                            </p>
+                            <p className="text-muted">Blocked</p>
                             <p className="mt-1 text-lg font-semibold">
                                 {progress.blockedTasks}
                             </p>
@@ -674,300 +595,28 @@ export default function SprintDetailPage() {
                 </section>
             )}
 
+            {/* Tasks Section */}
             <section className="mt-10">
-                <h2 className="text-2xl font-semibold">
-                    Tasks
-                </h2>
+                <h2 className="text-xl font-semibold">Tasks</h2>
 
-                {/* Documentation Section */}
-                <div className="mt-10">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <h2 className="text-2xl font-semibold">
-                            Documentation
-                        </h2>
-
-                        <div className="flex items-center gap-3">
-                            <span className="rounded-full bg-[#E8F6EF] px-3 py-1 text-sm font-medium">
-                                {documents.length}{" "}
-                                {documents.length === 1 ? "Document" : "Documents"}
-                            </span>
-
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setIsDocumentFormOpen((current) => !current)
-                                }
-                                className="rounded-xl bg-[#8CC9A8] px-4 py-2 text-sm font-medium text-[#1F2924] transition hover:opacity-90"
-                            >
-                                Add Document
-                            </button>
-                        </div>
-                    </div>
-
-                    {isDocumentFormOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                            <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
-                                <div className="mb-6 flex items-center justify-between">
-                                    <h2 className="text-xl font-semibold text-[#1F2924]">
-                                        Add Document
-                                    </h2>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsDocumentFormOpen(false)}
-                                        className="text-2xl text-gray-500 transition hover:text-gray-800"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-
-                                <p className="mb-6 text-sm text-gray-500">
-                                    Add documentation or an external reference to this sprint.
-                                </p>
-
-                                <form
-                                    onSubmit={handleCreateDocument}
-                                    className="space-y-5"
-                                >
-                                    <div>
-                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                            Document Title
-                                        </label>
-
-                                        <input
-                                            type="text"
-                                            value={documentTitle}
-                                            onChange={(event) =>
-                                                setDocumentTitle(event.target.value)
-                                            }
-                                            placeholder="e.g. Sprint Requirements"
-                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                            Document Type
-                                        </label>
-
-                                        <input
-                                            type="text"
-                                            value={documentType}
-                                            onChange={(event) =>
-                                                setDocumentType(event.target.value)
-                                            }
-                                            placeholder="e.g. Requirements, Design, Meeting Notes"
-                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                            Source Type
-                                        </label>
-
-                                        <select
-                                            value={documentSourceType}
-                                            onChange={(event) =>
-                                                setDocumentSourceType(
-                                                    event.target.value as
-                                                    | "DOCUMENT"
-                                                    | "LINK"
-                                                    | "UPLOAD",
-                                                )
-                                            }
-                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
-                                        >
-                                            <option value="DOCUMENT">Document Content</option>
-                                            <option value="LINK">External Link</option>
-                                            <option value="UPLOAD">Upload Document</option>
-                                        </select>
-                                    </div>
-
-                                    {documentSourceType === "DOCUMENT" ? (
-                                        <div>
-                                            <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                                Content
-                                            </label>
-
-                                            <textarea
-                                                value={documentContent}
-                                                onChange={(event) =>
-                                                    setDocumentContent(event.target.value)
-                                                }
-                                                placeholder="Write or paste the document content..."
-                                                rows={6}
-                                                className="w-full resize-y rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
-                                                required
-                                            />
-                                        </div>
-                                    ) : documentSourceType === "LINK" ? (
-                                        <div>
-                                            <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                                Document URL
-                                            </label>
-
-                                            <input
-                                                type="url"
-                                                value={documentUrl}
-                                                onChange={(event) =>
-                                                    setDocumentUrl(event.target.value)
-                                                }
-                                                placeholder="https://example.com/document"
-                                                className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
-                                                required
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                                Upload Document
-                                            </label>
-
-                                            <input
-                                                type="file"
-                                                accept=".pdf,.doc,.docx,.txt,.md"
-                                                onChange={(event) =>
-                                                    setDocumentFile(event.target.files?.[0] ?? null)
-                                                }
-                                                className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#E8F6EF] file:px-4 file:py-2 file:text-sm file:font-medium"
-                                                required
-                                            />
-
-                                            <p className="mt-1 text-xs text-gray-500">
-                                                Supported formats: PDF, DOC, DOCX, TXT, and Markdown.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <label className="mb-1 block text-sm font-medium text-[#1F2924]">
-                                            Tags
-                                        </label>
-
-                                        <input
-                                            type="text"
-                                            value={documentTags}
-                                            onChange={(event) =>
-                                                setDocumentTags(event.target.value)
-                                            }
-                                            placeholder="frontend, api, planning"
-                                            className="w-full rounded-xl border border-gray-200 px-4 py-2.5 outline-none focus:border-[#8CC9A8]"
-                                        />
-
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Separate multiple tags using commas.
-                                        </p>
-                                    </div>
-
-                                    <div className="flex justify-end gap-3 pt-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsDocumentFormOpen(false)}
-                                            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
-                                        >
-                                            Cancel
-                                        </button>
-
-                                        <button
-                                            type="submit"
-                                            disabled={isCreatingDocument}
-                                            className="rounded-xl bg-[#8CC9A8] px-5 py-2.5 text-sm font-medium text-[#1F2924] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            {isCreatingDocument ? "Saving..." : "Save Document"}
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    {documents.length === 0 ? (
-                        <div className="mt-5 rounded-2xl border border-dashed border-[#DDE8E1] bg-white p-6 text-sm text-[#5F6B64]">
-                            No documentation has been added to this sprint yet.
-                        </div>
-                    ) : (
-                        <div className="mt-5 space-y-4">
-                            {documents.map((document) => (
-                                <article
-                                    key={document.id}
-                                    className="rounded-2xl border border-[#DDE8E1] bg-white p-6 shadow-sm"
-                                >
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
-                                            <h3 className="text-lg font-semibold">
-                                                {document.title}
-                                            </h3>
-
-                                            <p className="mt-1 text-sm text-[#5F6B64]">
-                                                {document.type}
-                                            </p>
-                                        </div>
-
-                                        <span className="rounded-full bg-[#E8F6EF] px-3 py-1 text-xs font-medium">
-                                            {document.sourceType}
-                                        </span>
-                                    </div>
-
-                                    {document.sourceType === "DOCUMENT" &&
-                                        document.content && (
-                                            <p className="mt-4 whitespace-pre-wrap text-sm text-[#5F6B64]">
-                                                {document.content}
-                                            </p>
-                                        )}
-
-                                    {document.sourceType === "LINK" &&
-                                        document.url && (
-                                            <a
-                                                href={document.url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="mt-4 block break-all text-sm text-[#397A59] underline"
-                                            >
-                                                {document.url}
-                                            </a>
-                                        )}
-
-                                    {document.tags.length > 0 && (
-                                        <div className="mt-4 flex flex-wrap gap-2">
-                                            {document.tags.map(({ tag }) => (
-                                                <span
-                                                    key={tag.id}
-                                                    className="rounded-full bg-[#F8F7F2] px-3 py-1 text-xs text-[#5F6B64]"
-                                                >
-                                                    #{tag.name}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </article>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-
-                <div className="mt-5 space-y-4">
+                <div className="mt-4 space-y-4">
                     {sprint.tasks.map((task) => (
-                        <article
-                            key={task.id}
-                            className="rounded-2xl border border-[#DDE8E1] bg-white p-6 shadow-sm"
-                        >
+                        <article key={task.id} className="card">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
-                                    <p className="text-sm font-medium text-[#5F6B64]">
+                                    <p className="text-sm font-medium text-muted">
                                         {task.taskId}
                                     </p>
 
-                                    <h3 className="mt-1 text-xl font-semibold">
+                                    <h3 className="mt-1 text-lg font-semibold">
                                         {task.title}
                                     </h3>
                                 </div>
 
-                                <div className="flex items-center gap-2">
-                                    <span className="rounded-full bg-[#E8F6EF] px-3 py-1 text-sm">
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <span
+                                        className={`badge ${complexityStyles[task.complexity]}`}
+                                    >
                                         {task.complexity}
                                     </span>
 
@@ -979,7 +628,8 @@ export default function SprintDetailPage() {
                                                 event.target.value as Task["status"],
                                             )
                                         }
-                                        className="rounded-xl border border-[#DDE8E1] bg-white px-3 py-1 text-sm outline-none"
+                                        aria-label="Task status"
+                                        className="input w-auto py-1"
                                     >
                                         <option value="TODO">TODO</option>
                                         <option value="IN_PROGRESS">IN PROGRESS</option>
@@ -989,129 +639,58 @@ export default function SprintDetailPage() {
                                 </div>
                             </div>
 
-                            <p className="mt-3 text-[#5F6B64]">
+                            <p className="mt-3 text-sm leading-6 text-muted">
                                 {task.description}
                             </p>
 
-                            <div className="mt-4">
-                                <p className="text-sm font-medium">
-                                    Skills
-                                </p>
+                            <div className="mt-5 grid gap-4 border-t border-line pt-4 sm:grid-cols-3">
+                                <div>
+                                    <p className="text-xs font-semibold text-muted">
+                                        Skills
+                                    </p>
 
-                                <p className="mt-1 text-sm text-[#5F6B64]">
-                                    {task.skills
-                                        .map((skill) => skill.skill)
-                                        .join(", ")}
-                                </p>
-                            </div>
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {task.skills.map((skill) => (
+                                            <span
+                                                key={skill.id}
+                                                className="badge badge-brand"
+                                            >
+                                                {skill.skill}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
 
-                            <div className="mt-4">
-                                <p className="text-sm font-medium">
-                                    Assigned To
-                                </p>
-
-                                <p className="mt-1 text-sm text-[#5F6B64]">
-                                    {task.assignedTo
-                                        ? `${task.assignedTo.name} (${task.assignedTo.role})`
-                                        : "Unassigned"}
-                                </p>
-                            </div>
-
-                            <div className="mt-3">
-                                <label
-                                    htmlFor={`assign-${task.id}`}
-                                    className="text-sm font-medium"
-                                >
-                                    Assign Manually
-                                </label>
-
-                                <select
-                                    id={`assign-${task.id}`}
-                                    value={task.assignedTo?.id ?? ""}
-                                    onChange={(event) => {
-                                        const memberId = event.target.value;
-
-                                        if (memberId) {
-                                            handleManualAssignment(task.id, memberId);
-                                        }
-                                    }}
-                                    className="mt-1 w-full rounded-xl border border-[#DDE8E1] bg-white px-3 py-2 text-sm outline-none"
-                                >
-                                    <option value="">Select team member</option>
-
-                                    {teamMembers.map((member) => (
-                                        <option key={member.id} value={member.id}>
-                                            {member.name} ({member.role})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => handleRecommendAssignee(task.id)}
-                                disabled={loadingRecommendation === task.id}
-                                className="mt-3 rounded-xl border border-[#DDE8E1] px-3 py-2 text-sm font-medium transition hover:bg-[#E8F6EF] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                {loadingRecommendation === task.id
-                                    ? "Finding..."
-                                    : "Recommend Assignee"}
-                            </button>
-
-                            {recommendations[task.id]?.recommendedMember && (
-                                <div className="mt-3 rounded-xl bg-[#F8F7F2] p-4">
-                                    <p className="text-sm font-medium">
-                                        Recommended Assignee
+                                <div>
+                                    <p className="text-xs font-semibold text-muted">
+                                        Assigned To
                                     </p>
 
                                     <p className="mt-1 text-sm">
-                                        {recommendations[task.id].recommendedMember?.name}
-                                        {" "}
-                                        ({recommendations[task.id].recommendedMember?.role})
+                                        {task.assignedTo
+                                            ? `${task.assignedTo.name} (${task.assignedTo.role})`
+                                            : "Unassigned"}
                                     </p>
-
-                                    <p className="mt-1 text-sm text-[#5F6B64]">
-                                        Skill Match:{" "}
-                                        {recommendations[task.id].recommendedMember?.matchPercentage}%
-                                    </p>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const recommendedMember =
-                                                recommendations[task.id]?.recommendedMember;
-
-                                            if (recommendedMember) {
-                                                handleAssignRecommended(
-                                                    task.id,
-                                                    recommendedMember.memberId,
-                                                );
-                                            }
-                                        }}
-                                        className="mt-3 rounded-xl bg-[#8CC9A8] px-3 py-2 text-sm font-medium text-[#1F2924] transition hover:opacity-90"
-                                    >
-                                        Assign
-                                    </button>
                                 </div>
-                            )}
 
-                            <div className="mt-4">
-                                <p className="text-sm font-medium">
-                                    Estimated Hours
-                                </p>
+                                <div>
+                                    <p className="text-xs font-semibold text-muted">
+                                        Estimated Hours
+                                    </p>
 
-                                <p className="mt-1 text-sm text-[#5F6B64]">
-                                    {task.estimatedHours} hours
-                                </p>
+                                    <p className="mt-1 text-sm">
+                                        {task.estimatedHours} hours
+                                    </p>
+                                </div>
                             </div>
 
                             {task.dependencies.length > 0 && (
                                 <div className="mt-4">
-                                    <p className="text-sm font-medium">
+                                    <p className="text-xs font-semibold text-muted">
                                         Dependencies
                                     </p>
 
-                                    <p className="mt-1 text-sm text-[#5F6B64]">
+                                    <p className="mt-1 text-sm">
                                         {task.dependencies
                                             .map(
                                                 (dependency) =>
@@ -1121,10 +700,187 @@ export default function SprintDetailPage() {
                                     </p>
                                 </div>
                             )}
+
+                            {/* Assignment */}
+                            <div className="mt-5 rounded-lg bg-canvas p-4">
+                                <div className="flex flex-wrap items-end gap-3">
+                                    <div className="min-w-48 flex-1">
+                                        <label
+                                            htmlFor={`assign-${task.id}`}
+                                            className="label"
+                                        >
+                                            Assign Manually
+                                        </label>
+
+                                        <select
+                                            id={`assign-${task.id}`}
+                                            value={task.assignedTo?.id ?? ""}
+                                            onChange={(event) => {
+                                                const memberId = event.target.value;
+
+                                                if (memberId) {
+                                                    handleManualAssignment(task.id, memberId);
+                                                }
+                                            }}
+                                            className="input"
+                                        >
+                                            <option value="">Select team member</option>
+
+                                            {teamMembers.map((member) => (
+                                                <option key={member.id} value={member.id}>
+                                                    {member.name} ({member.role})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRecommendAssignee(task.id)}
+                                        disabled={loadingRecommendation === task.id}
+                                        className="btn-secondary"
+                                    >
+                                        {loadingRecommendation === task.id
+                                            ? "Finding..."
+                                            : "Recommend Assignee"}
+                                    </button>
+                                </div>
+
+                                {recommendations[task.id]?.recommendedMember && (
+                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-soft p-4">
+                                        <div>
+                                            <p className="text-xs font-semibold text-muted">
+                                                Recommended Assignee
+                                            </p>
+
+                                            <p className="mt-1 text-sm font-medium">
+                                                {recommendations[task.id].recommendedMember?.name}
+                                                {" "}
+                                                ({recommendations[task.id].recommendedMember?.role})
+                                            </p>
+
+                                            <p className="mt-1 text-sm text-muted">
+                                                Skill Match:{" "}
+                                                {recommendations[task.id].recommendedMember?.matchPercentage}%
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const recommendedMember =
+                                                    recommendations[task.id]?.recommendedMember;
+
+                                                if (recommendedMember) {
+                                                    handleAssignRecommended(
+                                                        task.id,
+                                                        recommendedMember.memberId,
+                                                    );
+                                                }
+                                            }}
+                                            className="btn-primary"
+                                        >
+                                            Assign
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </article>
                     ))}
                 </div>
             </section>
-        </PageContainer >
+
+            {/* Documentation Section */}
+            <section className="mt-10">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-xl font-semibold">Documentation</h2>
+
+                    <div className="flex items-center gap-3">
+                        <span className="badge badge-brand">
+                            {documents.length}{" "}
+                            {documents.length === 1 ? "Document" : "Documents"}
+                        </span>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsDocumentFormOpen(true)}
+                            className="btn-primary"
+                        >
+                            Add Document
+                        </button>
+                    </div>
+                </div>
+
+                {isDocumentFormOpen && (
+                    <AddDocumentModal
+                        sprintId={sprint.id}
+                        onClose={() => setIsDocumentFormOpen(false)}
+                        onCreated={(document) =>
+                            setDocuments((current) => [document, ...current])
+                        }
+                    />
+                )}
+
+                {documents.length === 0 ? (
+                    <p className="empty-state mt-4">
+                        No documentation has been added to this sprint yet.
+                    </p>
+                ) : (
+                    <div className="mt-4 space-y-4">
+                        {documents.map((document) => (
+                            <article key={document.id} className="card">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-lg font-semibold">
+                                            {document.title}
+                                        </h3>
+
+                                        <p className="mt-1 text-sm text-muted">
+                                            {document.type}
+                                        </p>
+                                    </div>
+
+                                    <span className="badge badge-brand">
+                                        {document.sourceType}
+                                    </span>
+                                </div>
+
+                                {document.sourceType === "DOCUMENT" &&
+                                    document.content && (
+                                        <p className="mt-4 text-sm whitespace-pre-wrap text-muted">
+                                            {document.content}
+                                        </p>
+                                    )}
+
+                                {document.sourceType === "LINK" &&
+                                    document.url && (
+                                        <a
+                                            href={document.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mt-4 block text-sm break-all text-brand-strong underline"
+                                        >
+                                            {document.url}
+                                        </a>
+                                    )}
+
+                                {document.tags.length > 0 && (
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {document.tags.map(({ tag }) => (
+                                            <span
+                                                key={tag.id}
+                                                className="badge badge-muted"
+                                            >
+                                                #{tag.name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </article>
+                        ))}
+                    </div>
+                )}
+            </section>
+        </PageContainer>
     );
 }

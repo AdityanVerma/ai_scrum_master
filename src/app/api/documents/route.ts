@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDocuments } from '@/lib/db/get-documents';
-import {
-  createDocument,
-  type CreateDocumentInput,
-} from '@/lib/db/create-document';
+import { createDocument } from '@/lib/db/create-document';
 
 // GET Documents
 export async function GET(request: Request) {

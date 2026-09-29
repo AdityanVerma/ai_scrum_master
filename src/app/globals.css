@@ -1,26 +1,101 @@
 @import 'tailwindcss';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Design tokens: one palette for the whole app.
+   Usage: bg-canvas, bg-surface, border-line, text-ink, text-muted,
+   bg-brand, hover:bg-brand-hover, bg-brand-soft, text-brand-strong */
+@theme {
+  --color-canvas: #f8f7f2;
+  --color-surface: #ffffff;
+  --color-line: #dde8e1;
+  --color-ink: #1f2924;
+  --color-muted: #5f6b64;
+  --color-brand: #8cc9a8;
+  --color-brand-hover: #7bbf9a;
+  --color-brand-soft: #e8f6ef;
+  --color-brand-strong: #397a59;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-strong);
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Shared building blocks so every page looks the same.
+   Controls use rounded-lg, cards use rounded-xl. */
+@layer components {
+  .card {
+    @apply rounded-xl border border-line bg-surface p-5 shadow-sm sm:p-6;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .alert-error {
+    @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700;
+  }
+
+  .empty-state {
+    @apply rounded-xl border border-dashed border-line px-6 py-10 text-center text-sm text-muted;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+
+  .hint {
+    @apply mt-1.5 text-xs text-muted;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  .badge-brand {
+    @apply bg-brand-soft text-brand-strong;
+  }
+
+  .badge-muted {
+    @apply bg-black/5 text-muted;
+  }
+
+  .badge-warning {
+    @apply bg-amber-50 text-amber-700;
+  }
+
+  .badge-danger {
+    @apply bg-red-50 text-red-700;
+  }
+
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4;
+  }
+
+  .modal-panel {
+    @apply max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition placeholder:text-muted/60 focus:border-brand focus:ring-2 focus:ring-brand/30;
+  }
 }
