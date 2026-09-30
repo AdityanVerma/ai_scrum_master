@@ -193,18 +193,20 @@ export default function TaskCard({
                 </div>
             )}
 
-            <button
-                type="button"
-                onClick={() => {
-                    setSubtaskValues(EMPTY_SUBTASK_FIELDS);
-                    setIsAddingSubtask(true);
-                }}
-                className="mt-3 text-sm font-medium text-brand-strong hover:underline"
-            >
-                + Add Subtask
-            </button>
+            {!locked && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        setSubtaskValues(EMPTY_SUBTASK_FIELDS);
+                        setIsAddingSubtask(true);
+                    }}
+                    className="mt-3 text-sm font-medium text-brand-strong hover:underline"
+                >
+                    + Add Subtask
+                </button>
+            )}
 
-            {isAddingSubtask && (
+            {isAddingSubtask && !locked && (
                 <form
                     onSubmit={handleAddSubtask}
                     className="mt-3 rounded-lg border border-line bg-canvas p-3"

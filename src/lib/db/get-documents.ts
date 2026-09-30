@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { documentInclude } from '@/lib/db/create-document';
 
 export async function getDocuments(sprintId?: string) {
   return prisma.document.findMany({
@@ -12,19 +13,6 @@ export async function getDocuments(sprintId?: string) {
       createdAt: 'desc',
     },
 
-    include: {
-      tags: {
-        include: {
-          tag: true,
-        },
-      },
-
-      sprint: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
+    include: documentInclude,
   });
 }

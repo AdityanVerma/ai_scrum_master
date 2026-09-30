@@ -106,8 +106,12 @@ export async function POST(request: Request) {
     console.error('Document upload error:', error);
 
     return NextResponse.json(
-      { error: 'Failed to process document.' },
-      { status: 500 },
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to process document.',
+      },
+      { status: 400 },
     );
   }
 }

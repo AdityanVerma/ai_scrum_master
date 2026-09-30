@@ -1,4 +1,27 @@
 import { prisma } from '@/lib/prisma';
+import { isHttpUrl } from '@/lib/http-url';
+
+// What every document response includes, so pages can show the tags, the
+// sprint and who added it (which decides who may edit or delete it).
+export const documentInclude = {
+  tags: {
+    include: {
+      tag: true,
+    },
+  },
+  sprint: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  createdBy: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+} as const;
 
 export type CreateDocumentInput = {
   title: string;
@@ -41,6 +64,10 @@ export async function createDocument(input: CreateDocumentInput) {
     throw new Error('Document URL is required.');
   }
 
+  if (sourceType === 'LINK' && !isHttpUrl(url!.trim())) {
+    throw new Error('Document URL must start with http:// or https://.');
+  }
+
   if (sprintId) {
     const sprint = await prisma.sprint.findUnique({
       where: { id: sprintId },
@@ -50,10 +77,6 @@ export async function createDocument(input: CreateDocumentInput) {
       throw new Error('Sprint not found.');
     }
   }
-
-  const normalizedTags = [
-    ...new Set(tagNames.map((tag) => tag.trim().toLowerCase()).filter(Boolean)),
-  ];
 
   return prisma.document.create({
     data: {
@@ -66,29 +89,32 @@ export async function createDocument(input: CreateDocumentInput) {
       sprintId,
       createdById,
       tags: {
-        create: await Promise.all(
-          normalizedTags.map(async (name) => {
-            const tag = await prisma.documentTag.upsert({
-              where: { name },
-              update: {},
-              create: { name },
-            });
-
-            return {
-              tag: {
-                connect: { id: tag.id },
-              },
-            };
-          }),
-        ),
+        create: await buildTagRelations(tagNames),
       },
     },
-    include: {
-      tags: {
-        include: {
-          tag: true,
-        },
-      },
-    },
+    include: documentInclude,
   });
+}
+
+// Tag names are stored lower-case and unique; missing tags are created.
+export async function buildTagRelations(tagNames: string[]) {
+  const normalizedTags = [
+    ...new Set(tagNames.map((tag) => tag.trim().toLowerCase()).filter(Boolean)),
+  ];
+
+  return Promise.all(
+    normalizedTags.map(async (name) => {
+      const tag = await prisma.documentTag.upsert({
+        where: { name },
+        update: {},
+        create: { name },
+      });
+
+      return {
+        tag: {
+          connect: { id: tag.id },
+        },
+      };
+    }),
+  );
 }

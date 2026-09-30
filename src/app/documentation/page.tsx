@@ -4,17 +4,41 @@ import { useEffect, useState } from "react";
 import PageContainer from "@/components/layout/PageContainer";
 import PageHeader from "@/components/layout/PageHeader";
 import { formatDate } from "@/lib/format-date";
-import AddDocumentModal, {
+import DocumentFormModal, {
     type Document,
-} from "@/components/documents/AddDocumentModal";
+} from "@/components/documents/DocumentFormModal";
+import DocumentActions, {
+    canChangeDocument,
+} from "@/components/documents/DocumentActions";
+
+type CurrentMember = {
+    id: string;
+    accessRole: "SCRUM_MASTER" | "MEMBER";
+};
 
 export default function DocumentationPage() {
     const [documents, setDocuments] = useState<Document[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isDocumentFormOpen, setIsDocumentFormOpen] = useState(false);
+    const [currentMember, setCurrentMember] = useState<CurrentMember | null>(null);
     const [sprints, setSprints] = useState<
         { id: string; name: string }[]
     >([]);
+
+    useEffect(() => {
+        async function fetchCurrentMember() {
+            const response = await fetch("/api/auth/me");
+
+            if (response.ok) {
+                const result = await response.json();
+                setCurrentMember(result.data.member);
+            }
+        }
+
+        fetchCurrentMember().catch((error) => {
+            console.error("Failed to load the signed-in member:", error);
+        });
+    }, []);
 
     useEffect(() => {
         const fetchDocuments = async () => {
@@ -84,10 +108,10 @@ export default function DocumentationPage() {
             />
 
             {isDocumentFormOpen && (
-                <AddDocumentModal
+                <DocumentFormModal
                     sprints={sprints}
                     onClose={() => setIsDocumentFormOpen(false)}
-                    onCreated={(document) =>
+                    onSaved={(document) =>
                         setDocuments((current) => [document, ...current])
                     }
                 />
@@ -168,8 +192,30 @@ export default function DocumentationPage() {
                             )}
 
                             <p className="mt-4 text-xs text-muted">
+                                {document.createdBy
+                                    ? `Added by ${document.createdBy.name} · `
+                                    : ""}
                                 {formatDate(document.createdAt)}
                             </p>
+
+                            {canChangeDocument(document, currentMember) && (
+                                <DocumentActions
+                                    document={document}
+                                    sprints={sprints}
+                                    onUpdated={(updated) =>
+                                        setDocuments((current) =>
+                                            current.map((item) =>
+                                                item.id === updated.id ? updated : item,
+                                            ),
+                                        )
+                                    }
+                                    onDeleted={(documentId) =>
+                                        setDocuments((current) =>
+                                            current.filter((item) => item.id !== documentId),
+                                        )
+                                    }
+                                />
+                            )}
                         </article>
                     ))}
                 </div>

@@ -5,9 +5,12 @@ import { useParams } from "next/navigation";
 import PageContainer from "@/components/layout/PageContainer";
 import PageHeader from "@/components/layout/PageHeader";
 import { formatDate } from "@/lib/format-date";
-import AddDocumentModal, {
+import DocumentFormModal, {
     type Document,
-} from "@/components/documents/AddDocumentModal";
+} from "@/components/documents/DocumentFormModal";
+import DocumentActions, {
+    canChangeDocument,
+} from "@/components/documents/DocumentActions";
 import EditSprintModal from "@/components/sprints/EditSprintModal";
 import OvertimeBadge from "@/components/sprints/OvertimeBadge";
 import {
@@ -1006,10 +1009,10 @@ export default function SprintDetailPage() {
                 </div>
 
                 {isDocumentFormOpen && (
-                    <AddDocumentModal
+                    <DocumentFormModal
                         sprintId={sprint.id}
                         onClose={() => setIsDocumentFormOpen(false)}
-                        onCreated={(document) =>
+                        onSaved={(document) =>
                             setDocuments((current) => [document, ...current])
                         }
                     />
@@ -1069,6 +1072,31 @@ export default function SprintDetailPage() {
                                             </span>
                                         ))}
                                     </div>
+                                )}
+
+                                {document.createdBy && (
+                                    <p className="mt-4 text-xs text-muted">
+                                        Added by {document.createdBy.name}
+                                    </p>
+                                )}
+
+                                {canChangeDocument(document, currentMember) && (
+                                    <DocumentActions
+                                        document={document}
+                                        sprintId={sprint.id}
+                                        onUpdated={(updated) =>
+                                            setDocuments((current) =>
+                                                current.map((item) =>
+                                                    item.id === updated.id ? updated : item,
+                                                ),
+                                            )
+                                        }
+                                        onDeleted={(documentId) =>
+                                            setDocuments((current) =>
+                                                current.filter((item) => item.id !== documentId),
+                                            )
+                                        }
+                                    />
                                 )}
                             </article>
                         ))}

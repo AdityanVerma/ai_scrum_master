@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import PageContainer from "@/components/layout/PageContainer";
 import PageHeader from "@/components/layout/PageHeader";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, toLocalDateString } from "@/lib/format-date";
 import AddTaskForm from "@/components/tasklist/AddTaskForm";
 import DaySummary from "@/components/tasklist/DaySummary";
 import TaskCard from "@/components/tasklist/TaskCard";
@@ -18,6 +18,13 @@ type TeamMember = {
     id: string;
     name: string;
     role: string;
+    isActive: boolean;
+};
+
+type CurrentMember = {
+    id: string;
+    name: string;
+    accessRole: "SCRUM_MASTER" | "MEMBER";
 };
 
 export default function TasklistPage() {
@@ -28,45 +35,57 @@ export default function TasklistPage() {
         type: "success" | "error";
         message: string;
     } | null>(null);
+    const [currentMember, setCurrentMember] = useState<CurrentMember | null>(null);
+    // Filled for the Scrum Master only, for the member picker.
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [memberId, setMemberId] = useState<string | null>(null);
+    // Bumped to load the tasklist again, e.g. after creating it.
+    const [reloadKey, setReloadKey] = useState(0);
     const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
     const [isAddingTask, setIsAddingTask] = useState(false);
+    const [isCreatingTasklist, setIsCreatingTasklist] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
     const [isCapturingSod, setIsCapturingSod] = useState(false);
     const [isCapturingEod, setIsCapturingEod] = useState(false);
     const [availableHours, setAvailableHours] = useState("8");
 
+    // Everyone starts on their own list. Only the Scrum Master can open
+    // someone else's, and only to read it.
     useEffect(() => {
-        async function fetchMembers() {
+        async function fetchCurrentMember() {
             try {
-                const response = await fetch("/api/team-members");
+                const response = await fetch("/api/auth/me");
                 const result = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(
-                        result.error || "Failed to fetch team members.",
-                    );
+                    throw new Error(result.error || "Failed to load your account.");
                 }
 
-                setMembers(result.data);
+                const me: CurrentMember = result.data.member;
 
-                if (result.data.length > 0) {
-                    setMemberId(result.data[0].id);
-                } else {
-                    setIsLoading(false);
+                setCurrentMember(me);
+                setMemberId(me.id);
+
+                if (me.accessRole === "SCRUM_MASTER") {
+                    const membersResponse = await fetch("/api/team-members");
+                    const membersResult = await membersResponse.json();
+
+                    if (membersResponse.ok) {
+                        setMembers(membersResult.data);
+                    }
                 }
             } catch (error) {
-                console.error("Failed to fetch team members:", error);
+                console.error("Failed to load the signed-in member:", error);
                 setLoadError(
                     error instanceof Error
                         ? error.message
-                        : "Failed to fetch team members.",
+                        : "Failed to load your account.",
                 );
                 setIsLoading(false);
             }
         }
 
-        fetchMembers();
+        fetchCurrentMember();
     }, []);
 
     useEffect(() => {
@@ -76,7 +95,7 @@ export default function TasklistPage() {
 
         async function fetchTasklist() {
             try {
-                const date = new Date().toISOString().split("T")[0];
+                const date = toLocalDateString();
 
                 const response = await fetch(
                     `/api/tasklists?memberId=${memberId}&date=${date}`,
@@ -127,14 +146,50 @@ export default function TasklistPage() {
         return () => {
             cancelled = true;
         };
-    }, [memberId]);
+    }, [memberId, reloadKey]);
 
     function handleMemberChange(id: string) {
         setMemberId(id);
         setTasklist(null);
         setSnapshots([]);
         setLoadError(null);
+        setCreateError(null);
+        setIsAddingTask(false);
         setIsLoading(true);
+    }
+
+    async function handleCreateTasklist() {
+        setCreateError(null);
+        setIsCreatingTasklist(true);
+
+        try {
+            // The API always creates the list for the signed-in member.
+            const response = await fetch("/api/tasklists", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ date: toLocalDateString() }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || "Failed to create tasklist.");
+            }
+
+            setIsLoading(true);
+            setReloadKey((key) => key + 1);
+        } catch (error) {
+            console.error("Failed to create tasklist:", error);
+            setCreateError(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to create tasklist.",
+            );
+        } finally {
+            setIsCreatingTasklist(false);
+        }
     }
 
     function showNotice(type: "success" | "error", message: string) {
@@ -210,8 +265,15 @@ export default function TasklistPage() {
         return () => clearTimeout(timer);
     }, [notice]);
 
+    const isOwnList = memberId !== null && memberId === currentMember?.id;
+    const viewedMemberName =
+        tasklist?.member.name ??
+        members.find((member) => member.id === memberId)?.name ??
+        "This member";
+    const pageTitle = isOwnList ? "My Tasklist" : `${viewedMemberName}'s Tasklist`;
+
     const memberPicker =
-        members.length > 0 ? (
+        currentMember?.accessRole === "SCRUM_MASTER" && members.length > 1 ? (
             <div className="mb-6 max-w-xs">
                 <label htmlFor="member-select" className="label">
                     Team member
@@ -227,9 +289,18 @@ export default function TasklistPage() {
                     {members.map((member) => (
                         <option key={member.id} value={member.id}>
                             {member.name}
+                            {member.id === currentMember.id && " (you)"}
+                            {!member.isActive && " - deactivated"}
                         </option>
                     ))}
                 </select>
+
+                {!isOwnList && (
+                    <p className="hint">
+                        Read only: you can view other members&apos; tasklists
+                        but not change them.
+                    </p>
+                )}
             </div>
         ) : null;
 
@@ -246,22 +317,10 @@ export default function TasklistPage() {
         return (
             <PageContainer>
                 {memberPicker}
-                <PageHeader title="My Tasklist" />
+                <PageHeader title={pageTitle} />
 
                 <p className="alert-error" role="alert">
                     {loadError}
-                </p>
-            </PageContainer>
-        );
-    }
-
-    if (members.length === 0) {
-        return (
-            <PageContainer>
-                <PageHeader title="My Tasklist" />
-
-                <p className="empty-state">
-                    No team members yet. Add one on the Team page first.
                 </p>
             </PageContainer>
         );
@@ -271,11 +330,34 @@ export default function TasklistPage() {
         return (
             <PageContainer>
                 {memberPicker}
-                <PageHeader title="My Tasklist" />
+                <PageHeader title={pageTitle} />
 
-                <p className="empty-state">
-                    No tasklist has been created for today.
-                </p>
+                {isOwnList ? (
+                    <div className="empty-state">
+                        <p>You have no tasklist for today yet.</p>
+
+                        <button
+                            type="button"
+                            onClick={handleCreateTasklist}
+                            disabled={isCreatingTasklist}
+                            className="btn-primary mt-4"
+                        >
+                            {isCreatingTasklist
+                                ? "Creating..."
+                                : "Create Today's Tasklist"}
+                        </button>
+
+                        {createError && (
+                            <p className="alert-error mt-4" role="alert">
+                                {createError}
+                            </p>
+                        )}
+                    </div>
+                ) : (
+                    <p className="empty-state">
+                        {viewedMemberName} has not created a tasklist for today.
+                    </p>
+                )}
             </PageContainer>
         );
     }
@@ -325,7 +407,7 @@ export default function TasklistPage() {
 
             {memberPicker}
             <PageHeader
-                title="My Tasklist"
+                title={pageTitle}
                 description={`${tasklist.member.name} · ${tasklist.member.role}`}
                 action={
                     <div className="text-right">
@@ -393,43 +475,48 @@ export default function TasklistPage() {
                             {tasklist.tasks.length} tasks
                         </span>
 
-                        {/* SOD - Start of Day button */}
-                        <button
-                            type="button"
-                            disabled={isCapturingSod || !!tasklist.sodCapturedAt}
-                            onClick={() => handleCapture("SOD")}
-                            className="btn-secondary"
-                        >
-                            {isCapturingSod
-                                ? "Capturing..."
-                                : tasklist.sodCapturedAt
-                                    ? "SOD Captured"
-                                    : "Start Day"}
-                        </button>
+                        {/* Only the owner changes a tasklist; others see it read only. */}
+                        {isOwnList && (
+                            <>
+                                {/* SOD - Start of Day button */}
+                                <button
+                                    type="button"
+                                    disabled={isCapturingSod || !!tasklist.sodCapturedAt}
+                                    onClick={() => handleCapture("SOD")}
+                                    className="btn-secondary"
+                                >
+                                    {isCapturingSod
+                                        ? "Capturing..."
+                                        : tasklist.sodCapturedAt
+                                            ? "SOD Captured"
+                                            : "Start Day"}
+                                </button>
 
-                        {/* EOD - End of Day button */}
-                        <button
-                            type="button"
-                            disabled={isCapturingEod || isLocked}
-                            onClick={() => handleCapture("EOD")}
-                            className="btn-secondary"
-                        >
-                            {isCapturingEod
-                                ? "Capturing..."
-                                : isLocked
-                                    ? "EOD Captured"
-                                    : "End Day"}
-                        </button>
+                                {/* EOD - End of Day button */}
+                                <button
+                                    type="button"
+                                    disabled={isCapturingEod || isLocked}
+                                    onClick={() => handleCapture("EOD")}
+                                    className="btn-secondary"
+                                >
+                                    {isCapturingEod
+                                        ? "Capturing..."
+                                        : isLocked
+                                            ? "EOD Captured"
+                                            : "End Day"}
+                                </button>
 
-                        {/* Add Task button */}
-                        <button
-                            type="button"
-                            onClick={() => setIsAddingTask(true)}
-                            disabled={isLocked}
-                            className="btn-primary"
-                        >
-                            + Add Task
-                        </button>
+                                {/* Add Task button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddingTask(true)}
+                                    disabled={isLocked}
+                                    className="btn-primary"
+                                >
+                                    + Add Task
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -448,7 +535,7 @@ export default function TasklistPage() {
 
                 {snapshots.length > 0 && <DaySummary snapshots={snapshots} />}
 
-                {isAddingTask && (
+                {isAddingTask && isOwnList && (
                     <AddTaskForm
                         tasklistId={tasklist.id}
                         nextOrder={parentTasks.length + 1}
@@ -474,7 +561,7 @@ export default function TasklistPage() {
                                     (subtask) =>
                                         subtask.parentTaskId === task.id,
                                 )}
-                                locked={isLocked}
+                                locked={isLocked || !isOwnList}
                                 onCreated={handleTaskCreated}
                                 onUpdated={handleTaskUpdated}
                                 onDeleted={handleTaskDeleted}
