@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { openrouter } from '@/lib/ai/openrouter';
+import { parseAiJson } from '@/lib/ai/parse-json';
 
 const taskSkillsSchema = z.object({
   taskId: z.string(),
@@ -107,13 +108,7 @@ Return ONLY valid JSON in exactly this structure:
     throw new Error('Skill identification returned an empty response.');
   }
 
-  const cleanedContent = content
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  const parsedResult = JSON.parse(cleanedContent);
+  const parsedResult = parseAiJson(content);
 
   return skillIdentificationSchema.parse(parsedResult);
 }

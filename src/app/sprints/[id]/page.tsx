@@ -13,11 +13,18 @@ import DocumentActions, {
 } from "@/components/documents/DocumentActions";
 import EditSprintModal from "@/components/sprints/EditSprintModal";
 import OvertimeBadge from "@/components/sprints/OvertimeBadge";
+import TaskTagFields, { type TaskTags } from "@/components/sprints/TaskTagFields";
 import {
     countUnfinishedTasks,
     sprintStatusStyles,
     type SprintStatus,
 } from "@/components/sprints/shared";
+import {
+    NO_FUNCTION_LABEL,
+    formatHours,
+    formatWeight,
+    groupTasksByFunction,
+} from "@/lib/sprint-functions";
 import { isSprintLocked } from "@/lib/sprint-status";
 
 type CurrentMember = {
@@ -33,6 +40,8 @@ type Task = {
     description: string;
     complexity: "LOW" | "MEDIUM" | "HIGH";
     estimatedHours: number;
+    functionId: string | null;
+    category: string;
 
     assignedTo: {
         id: string;
@@ -69,6 +78,10 @@ type Sprint = {
     startDate: string;
     endDate: string;
     totalEstimatedHours: number;
+    functions: {
+        id: string;
+        name: string;
+    }[];
     tasks: Task[];
 };
 
@@ -598,6 +611,20 @@ export default function SprintDetailPage() {
         }
     }
 
+    // Handle Function / Work Type Saved
+    function handleTagsSaved(taskId: string, tags: TaskTags) {
+        setSprint((currentSprint) =>
+            currentSprint
+                ? {
+                    ...currentSprint,
+                    tasks: currentSprint.tasks.map((task) =>
+                        task.id === taskId ? { ...task, ...tags } : task,
+                    ),
+                }
+                : currentSprint,
+        );
+    }
+
     if (isLoading) {
         return (
             <PageContainer>
@@ -624,6 +651,13 @@ export default function SprintDetailPage() {
 
     // Completed and cancelled sprints are read only for everyone.
     const isLocked = isSprintLocked(sprint.status);
+
+    // Each function's weight is its share of the sprint's estimated hours.
+    const taskGroups = groupTasksByFunction(
+        sprint.functions.map((item) => ({ key: item.id, name: item.name })),
+        sprint.tasks,
+        (task) => task.functionId,
+    );
 
     // Scrum Master: any task. Member: only tasks assigned to them.
     function canChangeStatus(task: Task) {
@@ -776,215 +810,258 @@ export default function SprintDetailPage() {
                 </section>
             )}
 
-            {/* Tasks Section */}
+            {/* Tasks Section, grouped by function */}
             <section className="mt-10">
                 <h2 className="text-xl font-semibold">Tasks</h2>
 
-                <div className="mt-4 space-y-4">
-                    {sprint.tasks.map((task) => (
-                        <article key={task.id} className="card">
-                            <div className="flex items-start justify-between gap-4">
-                                <div>
-                                    <p className="text-sm font-medium text-muted">
-                                        {task.taskId}
-                                    </p>
+                {taskGroups.map((group) => (
+                    <div key={group.key} className="mt-6">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line pb-2">
+                            <h3 className="text-lg font-semibold">
+                                {group.name ?? NO_FUNCTION_LABEL}
+                            </h3>
 
-                                    <h3 className="mt-1 text-lg font-semibold">
-                                        {task.title}
-                                    </h3>
-                                </div>
-
-                                <div className="flex shrink-0 items-center gap-2">
-                                    <span
-                                        className={`badge ${complexityStyles[task.complexity]}`}
-                                    >
-                                        {task.complexity}
-                                    </span>
-
-                                    {canChangeStatus(task) ? (
-                                        <select
-                                            value={task.status}
-                                            onChange={(event) =>
-                                                handleTaskStatusChange(
-                                                    task.id,
-                                                    event.target.value as Task["status"],
-                                                )
-                                            }
-                                            aria-label="Task status"
-                                            className="input w-auto py-1"
-                                        >
-                                            <option value="TODO">TODO</option>
-                                            <option value="IN_PROGRESS">IN PROGRESS</option>
-                                            <option value="DONE">DONE</option>
-                                            <option value="BLOCKED">BLOCKED</option>
-                                        </select>
-                                    ) : (
-                                        <span className={`badge ${taskStatusStyles[task.status]}`}>
-                                            {task.status.replace("_", " ")}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            <p className="mt-3 text-sm leading-6 text-muted">
-                                {task.description}
+                            <p className="text-sm text-muted">
+                                {formatHours(group.hours)} hours
+                                {group.name !== null &&
+                                    ` · ${formatWeight(group.weight)} of the sprint`}
                             </p>
+                        </div>
 
-                            <div className="mt-5 grid gap-4 border-t border-line pt-4 sm:grid-cols-3">
-                                <div>
-                                    <p className="text-xs font-semibold text-muted">
-                                        Skills
-                                    </p>
+                        {group.name === null && isScrumMaster && !isLocked && (
+                            <p className="hint">
+                                Pick a function for each of these tasks.
+                            </p>
+                        )}
 
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {task.skills.map((skill) => (
-                                            <span
-                                                key={skill.id}
-                                                className="badge badge-brand"
-                                            >
-                                                {skill.skill}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
+                        {group.tasks.length === 0 ? (
+                            <p className="mt-3 text-sm text-muted">
+                                No tasks in this function.
+                            </p>
+                        ) : (
+                            <div className="mt-4 space-y-4">
+                                {group.tasks.map((task) => (
+                                    <article key={task.id} className="card">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="text-sm font-medium text-muted">
+                                                        {task.taskId}
+                                                    </p>
 
-                                <div>
-                                    <p className="text-xs font-semibold text-muted">
-                                        Assigned To
-                                    </p>
+                                                    <span className="badge badge-muted">
+                                                        {task.category}
+                                                    </span>
+                                                </div>
 
-                                    <p className="mt-1 text-sm">
-                                        {task.assignedTo
-                                            ? `${task.assignedTo.name} (${task.assignedTo.role})`
-                                            : "Unassigned"}
-                                    </p>
-                                </div>
+                                                <h4 className="mt-1 text-lg font-semibold">
+                                                    {task.title}
+                                                </h4>
+                                            </div>
 
-                                <div>
-                                    <p className="text-xs font-semibold text-muted">
-                                        Estimated Hours
-                                    </p>
+                                            <div className="flex shrink-0 items-center gap-2">
+                                                <span
+                                                    className={`badge ${complexityStyles[task.complexity]}`}
+                                                >
+                                                    {task.complexity}
+                                                </span>
 
-                                    <p className="mt-1 text-sm">
-                                        {task.estimatedHours} hours
-                                    </p>
-                                </div>
-                            </div>
-
-                            {task.dependencies.length > 0 && (
-                                <div className="mt-4">
-                                    <p className="text-xs font-semibold text-muted">
-                                        Dependencies
-                                    </p>
-
-                                    <p className="mt-1 text-sm">
-                                        {task.dependencies
-                                            .map(
-                                                (dependency) =>
-                                                    `${dependency.dependsOn.taskId} - ${dependency.dependsOn.title}`,
-                                            )
-                                            .join(", ")}
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* Assignment: Scrum Master only, while the sprint is open */}
-                            {isScrumMaster && !isLocked && (
-                                <div className="mt-5 rounded-lg bg-canvas p-4">
-                                    <div className="flex flex-wrap items-end gap-3">
-                                        <div className="min-w-48 flex-1">
-                                            <label
-                                                htmlFor={`assign-${task.id}`}
-                                                className="label"
-                                            >
-                                                Assign Manually
-                                            </label>
-
-                                            <select
-                                                id={`assign-${task.id}`}
-                                                value={task.assignedTo?.id ?? ""}
-                                                onChange={(event) => {
-                                                    const memberId = event.target.value;
-
-                                                    if (memberId) {
-                                                        handleManualAssignment(task.id, memberId);
-                                                    }
-                                                }}
-                                                className="input"
-                                            >
-                                                <option value="">Select team member</option>
-
-                                                {/* Deactivated members cannot take new tasks, but the current assignee stays listed. */}
-                                                {teamMembers
-                                                    .filter(
-                                                        (member) =>
-                                                            member.isActive ||
-                                                            member.id === task.assignedTo?.id,
-                                                    )
-                                                    .map((member) => (
-                                                        <option key={member.id} value={member.id}>
-                                                            {member.name} ({member.role})
-                                                            {!member.isActive && " - deactivated"}
-                                                        </option>
-                                                    ))}
-                                            </select>
+                                                {canChangeStatus(task) ? (
+                                                    <select
+                                                        value={task.status}
+                                                        onChange={(event) =>
+                                                            handleTaskStatusChange(
+                                                                task.id,
+                                                                event.target.value as Task["status"],
+                                                            )
+                                                        }
+                                                        aria-label="Task status"
+                                                        className="input w-auto py-1"
+                                                    >
+                                                        <option value="TODO">TODO</option>
+                                                        <option value="IN_PROGRESS">IN PROGRESS</option>
+                                                        <option value="DONE">DONE</option>
+                                                        <option value="BLOCKED">BLOCKED</option>
+                                                    </select>
+                                                ) : (
+                                                    <span className={`badge ${taskStatusStyles[task.status]}`}>
+                                                        {task.status.replace("_", " ")}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRecommendAssignee(task.id)}
-                                            disabled={loadingRecommendation === task.id}
-                                            className="btn-secondary"
-                                        >
-                                            {loadingRecommendation === task.id
-                                                ? "Finding..."
-                                                : "Recommend Assignee"}
-                                        </button>
-                                    </div>
+                                        <p className="mt-3 text-sm leading-6 text-muted">
+                                            {task.description}
+                                        </p>
 
-                                    {recommendations[task.id]?.recommendedMember && (
-                                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-soft p-4">
+                                        <div className="mt-5 grid gap-4 border-t border-line pt-4 sm:grid-cols-3">
                                             <div>
                                                 <p className="text-xs font-semibold text-muted">
-                                                    Recommended Assignee
+                                                    Skills
                                                 </p>
 
-                                                <p className="mt-1 text-sm font-medium">
-                                                    {recommendations[task.id].recommendedMember?.name}
-                                                    {" "}
-                                                    ({recommendations[task.id].recommendedMember?.role})
+                                                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                    {task.skills.map((skill) => (
+                                                        <span
+                                                            key={skill.id}
+                                                            className="badge badge-brand"
+                                                        >
+                                                            {skill.skill}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-xs font-semibold text-muted">
+                                                    Assigned To
                                                 </p>
 
-                                                <p className="mt-1 text-sm text-muted">
-                                                    Skill Match:{" "}
-                                                    {recommendations[task.id].recommendedMember?.matchPercentage}%
+                                                <p className="mt-1 text-sm">
+                                                    {task.assignedTo
+                                                        ? `${task.assignedTo.name} (${task.assignedTo.role})`
+                                                        : "Unassigned"}
                                                 </p>
                                             </div>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const recommendedMember =
-                                                        recommendations[task.id]?.recommendedMember;
+                                            <div>
+                                                <p className="text-xs font-semibold text-muted">
+                                                    Estimated Hours
+                                                </p>
 
-                                                    if (recommendedMember) {
-                                                        handleAssignRecommended(
-                                                            task.id,
-                                                            recommendedMember.memberId,
-                                                        );
-                                                    }
-                                                }}
-                                                className="btn-primary"
-                                            >
-                                                Assign
-                                            </button>
+                                                <p className="mt-1 text-sm">
+                                                    {task.estimatedHours} hours
+                                                </p>
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
-                        </article>
-                    ))}
-                </div>
+
+                                        {task.dependencies.length > 0 && (
+                                            <div className="mt-4">
+                                                <p className="text-xs font-semibold text-muted">
+                                                    Dependencies
+                                                </p>
+
+                                                <p className="mt-1 text-sm">
+                                                    {task.dependencies
+                                                        .map(
+                                                            (dependency) =>
+                                                                `${dependency.dependsOn.taskId} - ${dependency.dependsOn.title}`,
+                                                        )
+                                                        .join(", ")}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Function, work type and assignment: Scrum Master only, while the sprint is open */}
+                                        {isScrumMaster && !isLocked && (
+                                            <div className="mt-5 rounded-lg bg-canvas p-4">
+                                                <TaskTagFields
+                                                    sprintId={sprint.id}
+                                                    task={task}
+                                                    functions={sprint.functions}
+                                                    onSaved={(tags) =>
+                                                        handleTagsSaved(task.id, tags)
+                                                    }
+                                                />
+
+                                                <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4">
+                                                    <div className="min-w-48 flex-1">
+                                                        <label
+                                                            htmlFor={`assign-${task.id}`}
+                                                            className="label"
+                                                        >
+                                                            Assign Manually
+                                                        </label>
+
+                                                        <select
+                                                            id={`assign-${task.id}`}
+                                                            value={task.assignedTo?.id ?? ""}
+                                                            onChange={(event) => {
+                                                                const memberId = event.target.value;
+
+                                                                if (memberId) {
+                                                                    handleManualAssignment(task.id, memberId);
+                                                                }
+                                                            }}
+                                                            className="input"
+                                                        >
+                                                            <option value="">Select team member</option>
+
+                                                            {/* Deactivated members cannot take new tasks, but the current assignee stays listed. */}
+                                                            {teamMembers
+                                                                .filter(
+                                                                    (member) =>
+                                                                        member.isActive ||
+                                                                        member.id === task.assignedTo?.id,
+                                                                )
+                                                                .map((member) => (
+                                                                    <option key={member.id} value={member.id}>
+                                                                        {member.name} ({member.role})
+                                                                        {!member.isActive && " - deactivated"}
+                                                                    </option>
+                                                                ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRecommendAssignee(task.id)}
+                                                        disabled={loadingRecommendation === task.id}
+                                                        className="btn-secondary"
+                                                    >
+                                                        {loadingRecommendation === task.id
+                                                            ? "Finding..."
+                                                            : "Recommend Assignee"}
+                                                    </button>
+                                                </div>
+
+                                                {recommendations[task.id]?.recommendedMember && (
+                                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-soft p-4">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-muted">
+                                                                Recommended Assignee
+                                                            </p>
+
+                                                            <p className="mt-1 text-sm font-medium">
+                                                                {recommendations[task.id].recommendedMember?.name}
+                                                                {" "}
+                                                                ({recommendations[task.id].recommendedMember?.role})
+                                                            </p>
+
+                                                            <p className="mt-1 text-sm text-muted">
+                                                                Skill Match:{" "}
+                                                                {recommendations[task.id].recommendedMember?.matchPercentage}%
+                                                            </p>
+                                                        </div>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const recommendedMember =
+                                                                    recommendations[task.id]?.recommendedMember;
+
+                                                                if (recommendedMember) {
+                                                                    handleAssignRecommended(
+                                                                        task.id,
+                                                                        recommendedMember.memberId,
+                                                                    );
+                                                                }
+                                                            }}
+                                                            className="btn-primary"
+                                                        >
+                                                            Assign
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </article>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
             </section>
 
             {/* Documentation Section */}

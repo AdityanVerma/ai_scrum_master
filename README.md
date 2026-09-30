@@ -6,8 +6,8 @@ Internal management tool for OsmosisLearn. It helps plan sprints with AI, assign
 
 - **Sign in** (`/login`): email and password. New members get a temporary password and choose their own at first sign-in (`/change-password`).
 - **Dashboard** (`/`): entry point to the tool.
-- **Plan Sprint** (`/sprint-proposal`, Scrum Master): describe a sprint and let the AI turn it into requirements, tasks, skills, dependencies and estimates, then save it as a sprint.
-- **Sprints** (`/sprints`): list of sprints; each sprint page shows progress, tasks, assignments (recommended or manual) and its documents. The Scrum Master edits, starts and ends sprints; several can be active at once, and an active sprint past its end date shows an Overtime badge.
+- **Plan Sprint** (`/sprint-proposal`, Scrum Master): describe a sprint and its functions (features) and let the AI turn them into tasks, each with a function, a work type, skills, dependencies and an estimate, plus one documentation task per function. The preview groups tasks by function and shows each function's weight (its share of the estimated hours). Remove any task you do not want, then save the sprint; nothing is saved before that.
+- **Sprints** (`/sprints`): list of sprints; each sprint page shows progress, tasks grouped by function, assignments (recommended or manual) and its documents. The Scrum Master edits, starts and ends sprints, and sets each task's function and work type (for sprints planned before tasks had them); several can be active at once, and an active sprint past its end date shows an Overtime badge.
 - **Team** (`/team-members`): team members and their skills, with a profile page per member. The Scrum Master adds members, deactivates them and resets passwords.
 - **Tasklist** (`/tasklist`): each member's daily tasklist with subtasks, capacity check, and start-of-day / end-of-day snapshots. The Scrum Master can view anyone's, read only.
 - **Documentation** (`/documentation`): documents, links and notes, optionally tied to a sprint. The author or the Scrum Master can edit and delete them.
@@ -39,7 +39,10 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Prisma 7 with Pos
    PRISMA_DATABASE_URL=     # PostgreSQL connection string used by the Prisma CLI
    OPENROUTER_API_KEY=      # key used for the AI sprint planning steps
    AUTH_SECRET=             # random secret (32+ characters) used to sign login sessions
+   DATABASE_POOL_MAX=       # optional; set to 1 with the local `prisma dev` database
    ```
+
+   The local `prisma dev` database drops connections when several are open at once, which shows up as "Connection terminated unexpectedly". `DATABASE_POOL_MAX=1` avoids it. Leave it unset for a normal PostgreSQL server.
 
    Generate a value for `AUTH_SECRET` with:
 

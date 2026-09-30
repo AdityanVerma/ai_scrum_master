@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { openrouter } from '@/lib/ai/openrouter';
+import { parseAiJson } from '@/lib/ai/parse-json';
 
 const correctedDependencySchema = z.object({
   taskId: z.string(),
@@ -151,7 +152,7 @@ Return ONLY valid JSON:
     throw new Error('Dependency correction returned an empty response.');
   }
 
-  const parsedResult = JSON.parse(content);
+  const parsedResult = parseAiJson(content);
 
   return dependencyCorrectionSchema.parse(parsedResult);
 }

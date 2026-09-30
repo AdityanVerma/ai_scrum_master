@@ -16,9 +16,10 @@ model Sprint {
   totalEstimatedHours Float
   status              SprintStatus @default(PLANNED)
 
-  tasks     SprintTask[]
-  documents Document[]
-  functions SprintFunction[]
+  tasks         SprintTask[]
+  documents     Document[]
+  functions     SprintFunction[]
+  progressMarks ProgressMark[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,14 +41,25 @@ model SprintTask {
   assignedToId String?
   assignedTo   TeamMember? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  skills       TaskSkill[]
-  dependencies TaskDependency[] @relation("TaskDependencies")
-  dependedOnBy TaskDependency[] @relation("TaskDependents")
+  // The function (feature) the task belongs to. Tasks of sprints planned
+  // before Phase 8 have none until the Scrum Master tags them.
+  functionId String?
+  function   SprintFunction? @relation(fields: [functionId], references: [id], onDelete: SetNull)
+
+  // Work type: Development | Documentation | Testing | Research | Deployment
+  // (src/lib/work-types.ts).
+  category String @default("Development")
+
+  skills        TaskSkill[]
+  dependencies  TaskDependency[] @relation("TaskDependencies")
+  dependedOnBy  TaskDependency[] @relation("TaskDependents")
+  tasklistTasks TasklistTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([sprintId, taskId])
+  @@index([functionId])
 }
 
 model SprintFunction {
@@ -55,15 +67,46 @@ model SprintFunction {
   name        String
   description String?
 
+  // Optional own timeline for its 25 / 50 / 75 marks; otherwise the sprint's.
+  startDate  DateTime?
+  targetDate DateTime?
+
   sprintId String
   sprint   Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
 
-  documents DocumentFunctionRelation[]
+  tasks         SprintTask[]
+  documents     DocumentFunctionRelation[]
+  progressMarks ProgressMark[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([sprintId, name])
+}
+
+// One row per progress mark reached. Planned dates are calculated when
+// needed, not stored, because sprint and function dates can be edited.
+model ProgressMark {
+  id String @id @default(cuid())
+
+  sprintId String
+  sprint   Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  // Both empty for a sprint mark; functionId only for a function mark;
+  // both for one work type of a function (e.g. its Documentation part).
+  functionId String?
+  function   SprintFunction? @relation(fields: [functionId], references: [id], onDelete: Cascade)
+  category   String?
+
+  // "sprint", "function:<functionId>" or "function:<functionId>:<category>".
+  // Used in the unique key, because PostgreSQL treats empty (NULL) values as
+  // all different, so functionId and category alone would allow duplicates.
+  scope String
+
+  mark      Int // 25, 50, 75 or 100
+  reachedAt DateTime @default(now())
+
+  @@unique([sprintId, scope, mark])
 }
 
 model TeamMember {
@@ -190,18 +233,18 @@ model DocumentFunctionRelation {
 }
 
 model DailyTasklist {
-  id        String @id @default(cuid())
+  id String @id @default(cuid())
 
-  memberId  String
-  member    TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId String
+  member   TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
-  date      DateTime
-  status    String @default("DRAFT")
+  date   DateTime
+  status String   @default("DRAFT")
 
   sodCapturedAt DateTime?
   eodCapturedAt DateTime?
 
-  tasks TasklistTask[]
+  tasks     TasklistTask[]
   snapshots TasklistSnapshot[]
 
   createdAt DateTime @default(now())
@@ -224,6 +267,18 @@ model TasklistTask {
 
   carriedForwardFromId String?
 
+  // Optional link to a sprint task assigned to this person. Kept as empty
+  // (not deleted) if the sprint task goes, so the day's record stays.
+  sprintTaskId String?
+  sprintTask   SprintTask? @relation(fields: [sprintTaskId], references: [id], onDelete: SetNull)
+
+  // Time actually spent that day, entered at End Day.
+  spentMins Int?
+
+  // Estimate for multi-day work outside the sprint (e.g. a pilot), copied
+  // when the task is carried over, so time can be totalled across days.
+  totalEstimateMins Int?
+
   parentTaskId String?
   parentTask   TasklistTask?  @relation("TaskSubtasks", fields: [parentTaskId], references: [id])
   subtasks     TasklistTask[] @relation("TaskSubtasks")
@@ -234,18 +289,19 @@ model TasklistTask {
   updatedAt DateTime @updatedAt
 
   @@index([tasklistId])
+  @@index([sprintTaskId])
 }
 
 model TasklistSnapshot {
-  id        String @id @default(cuid())
+  id String @id @default(cuid())
 
   tasklistId String
   tasklist   DailyTasklist @relation(fields: [tasklistId], references: [id], onDelete: Cascade)
 
-  type      String
+  type       String
   capturedAt DateTime @default(now())
 
-  tasks     Json
+  tasks Json
 
   @@index([tasklistId])
   @@index([tasklistId, type])

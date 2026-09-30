@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { openrouter } from '@/lib/ai/openrouter';
+import { parseAiJson } from '@/lib/ai/parse-json';
 
 const dependencySchema = z.object({
   taskId: z.string(),
@@ -93,7 +94,7 @@ Return ONLY valid JSON in exactly this structure:
     throw new Error('Dependency analysis returned an empty response.');
   }
 
-  const parsedResult = JSON.parse(content);
+  const parsedResult = parseAiJson(content);
 
   return dependencyAnalysisSchema.parse(parsedResult);
 }

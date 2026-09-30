@@ -1,8 +1,14 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@/generated/prisma/client';
 
+// Optional cap on open database connections. The local `prisma dev` database
+// drops connections when several are open at once, so set DATABASE_POOL_MAX=1
+// there. Unset, the driver's default pool (10) is used.
+const poolMax = Number(process.env.DATABASE_POOL_MAX) || undefined;
+
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
+  max: poolMax,
 });
 
 function createPrismaClient() {

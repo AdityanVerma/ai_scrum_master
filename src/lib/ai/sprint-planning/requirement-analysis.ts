@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { openrouter } from '@/lib/ai/openrouter';
+import { parseAiJson } from '@/lib/ai/parse-json';
 
 const requirementAnalysisSchema = z.object({
   isSufficient: z.boolean(),
@@ -161,7 +162,7 @@ Do not return explanations outside the JSON.
     throw new Error('Requirement analysis returned an empty response.');
   }
 
-  const parsedResult = JSON.parse(content);
+  const parsedResult = parseAiJson(content);
 
   return requirementAnalysisSchema.parse(parsedResult);
 }

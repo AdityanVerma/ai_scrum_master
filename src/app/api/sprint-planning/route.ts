@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/lib/auth/dal';
-import {
-  planSprint,
-  type SprintInput,
-} from '@/lib/ai/sprint-planning/sprint-planning';
-import { saveSprintProposal } from '@/lib/db/save-sprint-proposal';
+import { planSprint } from '@/lib/ai/sprint-planning/sprint-planning';
+import { uniqueFunctionNames } from '@/lib/sprint-functions';
 
+const sprintInputSchema = z.object({
+  name: z.string().trim().min(1, 'Sprint name is required.').max(200),
+  goal: z.string().trim().min(1, 'Sprint goal is required.').max(5000),
+  duration: z.object({
+    startDate: z.iso.date('Start date must be a date (YYYY-MM-DD).'),
+    endDate: z.iso.date('End date must be a date (YYYY-MM-DD).'),
+  }),
+  // Repeated names are dropped: a sprint cannot have two functions with the
+  // same name.
+  functions: z
+    .array(z.string().max(200))
+    .max(50)
+    .transform(uniqueFunctionNames)
+    .pipe(z.array(z.string()).min(1, 'Enter at least one function.')),
+});
+
+// Generates a sprint proposal. Nothing is saved: the Scrum Master checks it
+// on the Plan Sprint preview, removes any tasks they do not want, and saves it
+// with POST /api/sprints.
 export async function POST(request: Request) {
   try {
     const auth = await requireRole('SCRUM_MASTER');
@@ -14,37 +31,33 @@ export async function POST(request: Request) {
       return auth.response;
     }
 
-    const body = (await request.json()) as SprintInput;
+    const parsed = sprintInputSchema.safeParse(
+      await request.json().catch(() => null),
+    );
 
-    if (
-      !body.name ||
-      !body.goal ||
-      !body.duration?.startDate ||
-      !body.duration?.endDate ||
-      !body.functions?.length
-    ) {
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          error: 'All sprint information is required.',
+          error:
+            parsed.error.issues[0]?.message ??
+            'All sprint information is required.',
         },
         { status: 400 },
       );
     }
 
-    const result = await planSprint(body);
-
-    if (result.status === 'READY') {
-      const savedSprint = await saveSprintProposal(result.sprintProposal);
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          ...result,
-          savedSprint,
+    if (parsed.data.duration.endDate < parsed.data.duration.startDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'End date cannot be before start date.',
         },
-      });
+        { status: 400 },
+      );
     }
+
+    const result = await planSprint(parsed.data);
 
     return NextResponse.json({
       success: true,

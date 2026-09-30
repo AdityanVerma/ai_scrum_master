@@ -1,3 +1,5 @@
+import { WORK_TYPES } from "@/lib/work-types";
+
 export type Task = {
     id: string;
     title: string;
@@ -36,10 +38,5 @@ export function getPlannedMins(task: Task, subtasks: Task[]) {
         : task.estimatedMins;
 }
 
-export const TASK_CATEGORIES = [
-    "Development",
-    "Testing",
-    "Documentation",
-    "Meeting",
-    "Non-sprint",
-];
+// The sprint work types, plus work outside the sprint.
+export const TASK_CATEGORIES = [...WORK_TYPES, "Meeting", "Non-sprint"];

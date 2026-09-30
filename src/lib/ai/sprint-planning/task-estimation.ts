@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { openrouter } from '@/lib/ai/openrouter';
+import { parseAiJson } from '@/lib/ai/parse-json';
 
 const taskEstimateSchema = z.object({
   taskId: z.string(),
@@ -21,6 +22,7 @@ type SprintTask = {
   id: string;
   title: string;
   description: string;
+  category?: string;
 };
 
 type TaskSkills = {
@@ -41,6 +43,7 @@ export async function estimateTasks(
 ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description}
+Work type: ${task.category ?? 'Development'}
 Skills: ${skills.join(', ')}
 `;
     })
@@ -49,7 +52,7 @@ Skills: ${skills.join(', ')}
   const prompt = `
 You are an experienced software sprint estimation specialist.
 
-Estimate the effort required for each development task below.
+Estimate the effort required for each task below.
 
 Tasks:
 
@@ -117,7 +120,7 @@ Return ONLY valid JSON in exactly this structure:
     throw new Error('Task estimation returned an empty response.');
   }
 
-  const parsedResult = JSON.parse(content);
+  const parsedResult = parseAiJson(content);
 
   return taskEstimationSchema.parse(parsedResult);
 }

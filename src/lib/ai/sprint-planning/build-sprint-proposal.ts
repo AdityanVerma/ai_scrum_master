@@ -1,7 +1,12 @@
+import type { WorkType } from '@/lib/work-types';
+
 export type SprintProposalTask = {
   id: string;
   title: string;
   description: string;
+  // One of the proposal's functions, or null when the AI matched none.
+  functionName: string | null;
+  category: WorkType;
   skills: string[];
   complexity: 'LOW' | 'MEDIUM' | 'HIGH';
   estimatedHours: number;
@@ -34,6 +39,8 @@ type Task = {
   id: string;
   title: string;
   description: string;
+  functionName: string | null;
+  category: WorkType;
 };
 
 type TaskSkills = {
@@ -85,6 +92,8 @@ export function buildSprintProposal({
       id: task.id,
       title: task.title,
       description: task.description,
+      functionName: task.functionName,
+      category: task.category,
       skills: skills?.skills ?? [],
       complexity: estimate.complexity,
       estimatedHours: estimate.estimatedHours,
