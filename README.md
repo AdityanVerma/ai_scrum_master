@@ -4,12 +4,21 @@ Internal management tool for OsmosisLearn. It helps plan sprints with AI, assign
 
 ## What it does
 
+- **Sign in** (`/login`): email and password. New members get a temporary password and choose their own at first sign-in (`/change-password`).
 - **Dashboard** (`/`): entry point to the tool.
-- **Plan Sprint** (`/sprint-proposal`): describe a sprint and let the AI turn it into requirements, tasks, skills, dependencies and estimates, then save it as a sprint.
-- **Sprints** (`/sprints`): list of sprints; each sprint page shows progress, tasks, assignments (recommended or manual) and its documents.
-- **Team** (`/team-members`): team members and their skills.
-- **Tasklist** (`/tasklist`): a daily tasklist per team member with subtasks, capacity check, and start-of-day / end-of-day snapshots.
-- **Documentation** (`/documentation`): documents, links and notes, optionally tied to a sprint.
+- **Plan Sprint** (`/sprint-proposal`, Scrum Master): describe a sprint and let the AI turn it into requirements, tasks, skills, dependencies and estimates, then save it as a sprint.
+- **Sprints** (`/sprints`): list of sprints; each sprint page shows progress, tasks, assignments (recommended or manual) and its documents. The Scrum Master edits, starts and ends sprints; several can be active at once, and an active sprint past its end date shows an Overtime badge.
+- **Team** (`/team-members`): team members and their skills, with a profile page per member. The Scrum Master adds members, deactivates them and resets passwords.
+- **Tasklist** (`/tasklist`): each member's daily tasklist with subtasks, capacity check, and start-of-day / end-of-day snapshots. The Scrum Master can view anyone's, read only.
+- **Documentation** (`/documentation`): documents, links and notes, optionally tied to a sprint. The author or the Scrum Master can edit and delete them.
+
+## Roles
+
+| Scrum Master | Member |
+| --- | --- |
+| Everything a Member can do, plus: plan sprints with AI, edit / start / end sprints, assign tasks, manage the team, edit anyone's profile, view anyone's tasklist (read only), edit or delete any document | Own tasklist, own profile (name and skills), status of tasks assigned to them, add documents and edit or delete their own |
+
+Permissions are checked inside every API route; hidden buttons are only a convenience. The full rules are in `_docs_/PLAN/SUB-PHASES/PHASE-7.md`.
 
 ## Tech stack
 
@@ -53,11 +62,13 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Prisma 7 with Pos
    npm run create-admin -- --email you@example.com --password "your-password" --name "Your Name"
    ```
 
-5. Start the dev server and open [http://localhost:3000](http://localhost:3000):
+5. Start the dev server, open [http://localhost:3000](http://localhost:3000) and sign in with that account:
 
    ```bash
    npm run dev
    ```
+
+   Add the rest of the team from the Team page. Each person gets a temporary password to pass on, and chooses their own at first sign-in.
 
 ## Scripts
 
@@ -72,9 +83,9 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Prisma 7 with Pos
 
 ## Project layout
 
-- `src/app`: pages and API routes.
-- `src/components`: shared UI (`layout`, `tasklist`, `documents`).
-- `src/lib`: database helpers (`db`), AI planning steps (`ai`), assignment logic (`assignment`), and small utilities.
+- `src/app`: pages and API routes. `src/proxy.ts` sends signed-out visitors to `/login`.
+- `src/components`: shared UI (`layout`, `auth`, `team`, `sprints`, `sprint-proposal`, `tasklist`, `documents`).
+- `src/lib`: sign-in and permission checks (`auth`), database helpers (`db`), AI planning steps (`ai`), assignment logic (`assignment`), and small utilities.
 - `prisma`: schema and migrations. The generated client lives in `src/generated/prisma`.
 - `_docs_`: project documentation. Start with `_docs_/PLAN` for the pain points, phases and per-phase notes.
 - `TODO.md`: the current clean-up checklist.

@@ -699,9 +699,9 @@ The carry-forward endpoint is `POST /api/tasklists/[tasklistId]` with `{ sourceT
 
 # 27. Known Limitations (Current Build)
 
-* The `/tasklist` page uses one hard-coded member ID and only loads today's date. There is no member selector, date picker, or history view yet.
-* The page has no "create tasklist" action. It shows "No tasklist has been created for today" until a tasklist is created through `POST /api/tasklists`.
-* `/tasklist` is not linked from the header navigation.
+* (Updated in Phase 7) The `/tasklist` page opens the signed-in member's own tasklist for today; the Scrum Master also gets a member picker (other people's lists are read only). It still only loads today's date: there is no date picker or history view yet.
+* (Updated in Phase 7) A "Create Today's Tasklist" button appears when there is no tasklist for today.
+* (Updated) `/tasklist` is linked from the header navigation.
 * `DailyTasklist.status` defaults to `DRAFT` but is never updated, so the tasklist lifecycle is still pending.
 * The SOD vs EOD comparison is calculated in the browser from the stored snapshots. It is not stored or exposed through an API.
 * Carry-forward copies only the parent task (not its subtasks), and it does not check whether the target tasklist is already frozen by EOD.

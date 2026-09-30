@@ -10,7 +10,7 @@ This document records the functionality implemented and verified so far in the I
 
 The purpose is to provide a single reference for the completed work before moving on to the next feature set.
 
-*Last checked against the code: 29 September 2026. Corrections made in that check are marked "(updated)".*
+*Last checked against the code: 29 September 2026. Corrections made in that check are marked "(updated)". Section 16 and the changes marked "(Updated 30 September)" were added on 30 September 2026.*
 
 ---
 
@@ -696,16 +696,53 @@ The Upload Document option currently reaches the intended temporary limitation m
 
 These items are outside the documentation feature but are part of the current application.
 
-- **Daily tasklist page (`/tasklist`).** Each team member has a tasklist per day with tasks and subtasks (category, priority, estimate, status), edit and delete, a planned-versus-available capacity check, and start-of-day and end-of-day snapshots. A team member dropdown chooses whose tasklist is shown. After end of day is captured the tasklist is locked. The page is built from components in `src/components/tasklist/`.
-- **Carry forward API.** Tasks can be carried into another tasklist through the tasklist API; a locked target tasklist returns 409. There is no button for it in the UI yet.
-- **Team page (`/team-members`).** Lists team members and their skills. Adding members from the UI is not built yet, although the API supports it.
+- **Daily tasklist page (`/tasklist`).** Each team member has a tasklist per day with tasks and subtasks (category, priority, estimate, status), edit and delete, a planned-versus-available capacity check, and start-of-day and end-of-day snapshots. (Updated 30 September) Each person opens their own tasklist and can create today's from the page; the Scrum Master can pick another member's tasklist, read only. After end of day is captured the tasklist is locked. The page is built from components in `src/components/tasklist/`.
+- **Carry forward API.** Tasks can be carried into another tasklist through the tasklist API; a locked target tasklist returns 409. (Updated 30 September) Only tasks from your own tasklists can be carried. There is no button for it in the UI yet.
+- **Team page (`/team-members`).** Lists team members and their skills. (Updated 30 September) The Scrum Master adds, deactivates and reactivates members and resets passwords here, and each member has a profile page. See section 16.
 - **Shared look and feel.** All pages use the shared classes and colour tokens in `src/app/globals.css`, one date format (`src/lib/format-date.ts`), and inline messages instead of browser alert popups.
+
+---
+
+# 16. Sign-in, Roles and Permissions (added 30 September 2026)
+
+## Intent
+
+The tool had no sign-in: anyone who could open it could plan sprints (paid AI calls), remove team members or change anyone's tasklist. The Scrum Master needed to run the sprint and the team, while each member works on their own tasklist, tasks and documents.
+
+## Outcome
+
+Everyone signs in with an email and a password and has one of two roles, **Scrum Master** or **Member**. Every API route checks the role and ownership, and every screen shows only the actions the person can use.
+
+## Current solution
+
+- **Sign-in** with a signed session cookie. The member is read again from the database on every request, so deactivating someone takes effect at once.
+- **Team management** (Scrum Master): add members with a temporary password, deactivate and reactivate them, reset passwords. A member with no history can be deleted.
+- **Profile page** (`/team-members/[id]`): members edit their own name and skills; the Scrum Master edits anyone.
+- **Sprints** (Scrum Master): edit name, goal and dates; end a sprint (unfinished tasks stay recorded in it); several sprints can be active at once, with an Overtime badge on active sprints past their end date.
+- **Sprint tasks**: only the Scrum Master assigns; a member changes the status of tasks assigned to them.
+- **Documentation**: anyone adds; the author or the Scrum Master edits and deletes. Links must be `http://` or `https://`. Documents added before sign-in have no author, so only the Scrum Master can change them.
+- **Not allowed page** for Members who open Plan Sprint by its URL.
+
+The full rules, the API reference and the known limitations are in `_docs_/PLAN/SUB-PHASES/PHASE-7.md`.
+
+## How it helps the workflow
+
+- Paid AI planning and team changes stay with the Scrum Master.
+- Members see a simpler screen with only what they can do.
+- History is kept: members are deactivated rather than deleted, and ended sprints are read only.
+
+## Assumptions and limitations
+
+- The first Scrum Master is created with `npm run create-admin` (see `README.md`).
+- There is no email sending: temporary passwords are passed on by hand.
+- Resetting a password does not sign the member out of browsers where they are already signed in; deactivating does.
+- Checked with automated requests for each role (signed out, Member, Scrum Master, deactivated member). A click-through in the browser is still to be done.
 
 ---
 
 # Where this leaves us
 
-The Internal Management System now has a functional foundation for sprint planning, task execution support, assignee recommendations, and centralized documentation.
+The Internal Management System now has a functional foundation for sprint planning, task execution support, assignee recommendations, and centralized documentation, with sign-in and Scrum Master / Member roles across all of it.
 
 The Documentation feature currently supports both:
 
