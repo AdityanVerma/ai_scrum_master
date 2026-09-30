@@ -9,6 +9,7 @@ export type CreateDocumentInput = {
   source?: 'MANUAL' | 'AI_GENERATED';
   sprintId?: string;
   tagNames?: string[];
+  createdById?: string;
 };
 
 export async function createDocument(input: CreateDocumentInput) {
@@ -21,6 +22,7 @@ export async function createDocument(input: CreateDocumentInput) {
     source = 'MANUAL',
     sprintId,
     tagNames = [],
+    createdById,
   } = input;
 
   if (!title.trim()) {
@@ -62,6 +64,7 @@ export async function createDocument(input: CreateDocumentInput) {
       url: sourceType === 'LINK' ? url?.trim() : null,
       source,
       sprintId,
+      createdById,
       tags: {
         create: await Promise.all(
           normalizedTags.map(async (name) => {

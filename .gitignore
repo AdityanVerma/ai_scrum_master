@@ -25,6 +25,7 @@
 *.pem
 TODO.md
 AGENTS.md
+/_data_
 
 # debug
 npm-debug.log*

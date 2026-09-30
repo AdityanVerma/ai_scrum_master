@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/dal';
 import { getDocuments } from '@/lib/db/get-documents';
 import { createDocument } from '@/lib/db/create-document';
 
 // GET Documents
 export async function GET(request: Request) {
   try {
+    const auth = await requireSession();
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const { searchParams } = new URL(request.url);
     const sprintId = searchParams.get('sprintId') ?? undefined;
 
@@ -30,6 +37,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireSession();
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const formData = await request.formData();
 
     const title = String(formData.get('title') ?? '');
@@ -79,6 +92,7 @@ export async function POST(request: Request) {
       url,
       sprintId: sprintId || undefined,
       tagNames,
+      createdById: auth.member.id,
     });
 
     return NextResponse.json(

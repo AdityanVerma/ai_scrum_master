@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 export type UpdateTeamMemberInput = {
   name?: string;
   role?: string;
+  email?: string;
   skills?: string[];
 };
 
@@ -37,6 +38,7 @@ export async function updateTeamMember(
       data: {
         ...(name !== undefined && { name }),
         ...(role !== undefined && { role }),
+        ...(input.email !== undefined && { email: input.email }),
       },
     });
 

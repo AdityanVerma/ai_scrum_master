@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/dal';
 import {
   planSprint,
   type SprintInput,
@@ -7,6 +8,12 @@ import { saveSprintProposal } from '@/lib/db/save-sprint-proposal';
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireRole('SCRUM_MASTER');
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const body = (await request.json()) as SprintInput;
 
     if (

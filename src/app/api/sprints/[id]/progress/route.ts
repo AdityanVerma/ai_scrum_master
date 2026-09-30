@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/dal';
 import { getSprintProgress } from '@/lib/db/get-sprint-progress';
 
 type RouteContext = {
@@ -7,6 +8,12 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   try {
+    const auth = await requireSession();
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const { id } = await context.params;
 
     const progress = await getSprintProgress(id);

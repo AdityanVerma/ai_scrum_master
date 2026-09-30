@@ -3,6 +3,7 @@ import { calculateSkillMatch } from '@/lib/assignment/calculate-skill-match';
 
 export async function getAssignmentCandidates(requiredSkills: string[]) {
   const members = await prisma.teamMember.findMany({
+    where: { isActive: true },
     include: {
       skills: true,
     },

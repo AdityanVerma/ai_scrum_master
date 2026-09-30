@@ -1,18 +1,40 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/dal';
 import { prisma } from '@/lib/prisma';
 import { createTasklist } from '@/lib/db/create-tasklist';
 
 export async function GET(request: Request) {
   try {
+    const auth = await requireSession();
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const { searchParams } = new URL(request.url);
 
-    const memberId = searchParams.get('memberId');
+    // A member always reads their own list. Only the Scrum Master may ask
+    // for someone else's.
+    const memberId = searchParams.get('memberId') ?? auth.member.id;
     const date = searchParams.get('date');
 
-    if (!memberId || !date) {
+    if (!date) {
       return NextResponse.json(
-        { error: 'memberId and date are required.' },
+        { error: 'date is required.' },
         { status: 400 },
+      );
+    }
+
+    if (
+      memberId !== auth.member.id &&
+      auth.member.accessRole !== 'SCRUM_MASTER'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You can only view your own tasklist.',
+        },
+        { status: 403 },
       );
     }
 
@@ -49,14 +71,34 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireSession();
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const body = await request.json();
 
-    const { memberId, date } = body;
+    const { date } = body;
 
-    if (!memberId || !date) {
+    // The list always belongs to the signed-in member, never to whoever the
+    // request body names.
+    const memberId = auth.member.id;
+
+    if (!date) {
       return NextResponse.json(
-        { error: 'memberId and date are required.' },
+        { error: 'date is required.' },
         { status: 400 },
+      );
+    }
+
+    if (body.memberId && body.memberId !== memberId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You can only create your own tasklist.',
+        },
+        { status: 403 },
       );
     }
 

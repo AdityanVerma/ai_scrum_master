@@ -21,6 +21,10 @@ export async function assignTask(taskId: string, memberId: string) {
     throw new Error('Team member not found.');
   }
 
+  if (!member.isActive) {
+    throw new Error('Cannot assign a task to a deactivated member.');
+  }
+
   return prisma.sprintTask.update({
     where: {
       id: taskId,

@@ -8,6 +8,19 @@ import { formatDate } from "@/lib/format-date";
 import AddDocumentModal, {
     type Document,
 } from "@/components/documents/AddDocumentModal";
+import EditSprintModal from "@/components/sprints/EditSprintModal";
+import OvertimeBadge from "@/components/sprints/OvertimeBadge";
+import {
+    countUnfinishedTasks,
+    sprintStatusStyles,
+    type SprintStatus,
+} from "@/components/sprints/shared";
+import { isSprintLocked } from "@/lib/sprint-status";
+
+type CurrentMember = {
+    id: string;
+    accessRole: "SCRUM_MASTER" | "MEMBER";
+};
 
 type Task = {
     id: string;
@@ -48,7 +61,7 @@ type Task = {
 type Sprint = {
     id: string;
     name: string;
-    status: "PLANNED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+    status: SprintStatus;
     goal: string;
     startDate: string;
     endDate: string;
@@ -88,13 +101,15 @@ type TeamMember = {
     id: string;
     name: string;
     role: string;
+    isActive: boolean;
 };
 
-const sprintStatusStyles: Record<Sprint["status"], string> = {
-    PLANNED: "badge-muted",
-    ACTIVE: "badge-brand",
-    COMPLETED: "badge-brand",
-    CANCELLED: "badge-danger",
+// Read-only status, for people who cannot change it.
+const taskStatusStyles: Record<Task["status"], string> = {
+    TODO: "badge-muted",
+    IN_PROGRESS: "badge-warning",
+    DONE: "badge-brand",
+    BLOCKED: "badge-danger",
 };
 
 const complexityStyles: Record<Task["complexity"], string> = {
@@ -110,6 +125,8 @@ export default function SprintDetailPage() {
     const [progress, setProgress] = useState<SprintProgress | null>(null);
     const [recommendations, setRecommendations] = useState<Record<string, AssignmentRecommendation>>({});
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+    const [currentMember, setCurrentMember] = useState<CurrentMember | null>(null);
+    const [isEditSprintOpen, setIsEditSprintOpen] = useState(false);
 
     // Dcocumentation States
     const [documents, setDocuments] = useState<Document[]>([]);
@@ -121,6 +138,7 @@ export default function SprintDetailPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [loadingRecommendation, setLoadingRecommendation] = useState<string | null>(null);
     const [isActivating, setIsActivating] = useState(false);
+    const [isEnding, setIsEnding] = useState(false);
 
     useEffect(() => {
         async function fetchSprint() {
@@ -199,6 +217,24 @@ export default function SprintDetailPage() {
         fetchTeamMembers();
     }, []);
 
+    useEffect(() => {
+        async function fetchCurrentMember() {
+            const response = await fetch("/api/auth/me");
+
+            if (response.ok) {
+                const result = await response.json();
+                setCurrentMember(result.data.member);
+            }
+        }
+
+        fetchCurrentMember().catch((error) => {
+            console.error("Failed to load the signed-in member:", error);
+        });
+    }, []);
+
+    // Buttons are a convenience; the API checks the role on every request.
+    const isScrumMaster = currentMember?.accessRole === "SCRUM_MASTER";
+
     // Handle Active Sprint
     async function handleActivateSprint() {
         if (!sprint) return;
@@ -206,6 +242,43 @@ export default function SprintDetailPage() {
         try {
             setIsActivating(true);
             setActionError(null);
+
+            // Several sprints may run at once (leftover work is finished as
+            // overtime), but the Scrum Master confirms it first.
+            const sprintsResponse = await fetch("/api/sprints");
+            const sprintsResult = await sprintsResponse.json();
+
+            if (!sprintsResponse.ok) {
+                throw new Error(
+                    sprintsResult.error || "Failed to check active sprints.",
+                );
+            }
+
+            const otherActiveSprints = (
+                sprintsResult.data as {
+                    id: string;
+                    name: string;
+                    status: SprintStatus;
+                    tasks: { status: string }[];
+                }[]
+            ).filter((item) => item.status === "ACTIVE" && item.id !== sprint.id);
+
+            if (otherActiveSprints.length > 0) {
+                const stillActive = otherActiveSprints
+                    .map((item) => {
+                        const unfinished = countUnfinishedTasks(item.tasks);
+
+                        return `"${item.name}" is still active with ${unfinished} unfinished ${unfinished === 1 ? "task" : "tasks"}.`;
+                    })
+                    .join("\n");
+
+                const alongside =
+                    otherActiveSprints.length === 1 ? "alongside it" : "alongside them";
+
+                if (!confirm(`${stillActive}\n\nStart "${sprint.name}" ${alongside}?`)) {
+                    return;
+                }
+            }
 
             const response = await fetch(
                 `/api/sprints/${sprint.id}/activate`,
@@ -240,6 +313,54 @@ export default function SprintDetailPage() {
             );
         } finally {
             setIsActivating(false);
+        }
+    }
+
+    // Handle End Sprint
+    async function handleEndSprint() {
+        if (!sprint) return;
+
+        const total = sprint.tasks.length;
+        const unfinished = countUnfinishedTasks(sprint.tasks);
+        const summary =
+            unfinished > 0
+                ? `${unfinished} of ${total} tasks are unfinished. They stay in this sprint, recorded as unfinished.`
+                : `All ${total} tasks are done.`;
+
+        if (!confirm(`End "${sprint.name}"?\n\n${summary}`)) {
+            return;
+        }
+
+        try {
+            setIsEnding(true);
+            setActionError(null);
+
+            const response = await fetch(`/api/sprints/${sprint.id}/complete`, {
+                method: "PATCH",
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || "Failed to end sprint.");
+            }
+
+            setSprint((currentSprint) =>
+                currentSprint
+                    ? {
+                        ...currentSprint,
+                        status: result.data.status,
+                    }
+                    : currentSprint,
+            );
+        } catch (error) {
+            console.error("Failed to end sprint:", error);
+
+            setActionError(
+                error instanceof Error ? error.message : "Failed to end sprint.",
+            );
+        } finally {
+            setIsEnding(false);
         }
     }
 
@@ -498,20 +619,46 @@ export default function SprintDetailPage() {
         );
     }
 
+    // Completed and cancelled sprints are read only for everyone.
+    const isLocked = isSprintLocked(sprint.status);
+
+    // Scrum Master: any task. Member: only tasks assigned to them.
+    function canChangeStatus(task: Task) {
+        return (
+            !isLocked &&
+            (isScrumMaster || task.assignedTo?.id === currentMember?.id)
+        );
+    }
+
     return (
         <PageContainer>
             <PageHeader
                 title={sprint.name}
                 description={sprint.goal}
                 action={
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <span
                             className={`badge ${sprintStatusStyles[sprint.status]}`}
                         >
                             {sprint.status}
                         </span>
 
-                        {sprint.status === "PLANNED" && (
+                        <OvertimeBadge
+                            sprint={sprint}
+                            unfinishedTasks={countUnfinishedTasks(sprint.tasks)}
+                        />
+
+                        {isScrumMaster && !isLocked && (
+                            <button
+                                type="button"
+                                onClick={() => setIsEditSprintOpen(true)}
+                                className="btn-secondary"
+                            >
+                                Edit Sprint
+                            </button>
+                        )}
+
+                        {isScrumMaster && sprint.status === "PLANNED" && (
                             <button
                                 type="button"
                                 onClick={handleActivateSprint}
@@ -521,6 +668,17 @@ export default function SprintDetailPage() {
                                 {isActivating
                                     ? "Activating..."
                                     : "Activate Sprint"}
+                            </button>
+                        )}
+
+                        {isScrumMaster && sprint.status === "ACTIVE" && (
+                            <button
+                                type="button"
+                                onClick={handleEndSprint}
+                                disabled={isEnding}
+                                className="btn-primary"
+                            >
+                                {isEnding ? "Ending..." : "End Sprint"}
                             </button>
                         )}
                     </div>
@@ -535,6 +693,26 @@ export default function SprintDetailPage() {
 
                 <span>{sprint.totalEstimatedHours} hours</span>
             </div>
+
+            {isEditSprintOpen && (
+                <EditSprintModal
+                    sprint={sprint}
+                    onClose={() => setIsEditSprintOpen(false)}
+                    onSaved={(updated) =>
+                        setSprint((currentSprint) =>
+                            currentSprint
+                                ? {
+                                    ...currentSprint,
+                                    name: updated.name,
+                                    goal: updated.goal,
+                                    startDate: updated.startDate,
+                                    endDate: updated.endDate,
+                                }
+                                : currentSprint,
+                        )
+                    }
+                />
+            )}
 
             {actionError && (
                 <p className="alert-error mb-6" role="alert">
@@ -620,22 +798,28 @@ export default function SprintDetailPage() {
                                         {task.complexity}
                                     </span>
 
-                                    <select
-                                        value={task.status}
-                                        onChange={(event) =>
-                                            handleTaskStatusChange(
-                                                task.id,
-                                                event.target.value as Task["status"],
-                                            )
-                                        }
-                                        aria-label="Task status"
-                                        className="input w-auto py-1"
-                                    >
-                                        <option value="TODO">TODO</option>
-                                        <option value="IN_PROGRESS">IN PROGRESS</option>
-                                        <option value="DONE">DONE</option>
-                                        <option value="BLOCKED">BLOCKED</option>
-                                    </select>
+                                    {canChangeStatus(task) ? (
+                                        <select
+                                            value={task.status}
+                                            onChange={(event) =>
+                                                handleTaskStatusChange(
+                                                    task.id,
+                                                    event.target.value as Task["status"],
+                                                )
+                                            }
+                                            aria-label="Task status"
+                                            className="input w-auto py-1"
+                                        >
+                                            <option value="TODO">TODO</option>
+                                            <option value="IN_PROGRESS">IN PROGRESS</option>
+                                            <option value="DONE">DONE</option>
+                                            <option value="BLOCKED">BLOCKED</option>
+                                        </select>
+                                    ) : (
+                                        <span className={`badge ${taskStatusStyles[task.status]}`}>
+                                            {task.status.replace("_", " ")}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
@@ -701,90 +885,100 @@ export default function SprintDetailPage() {
                                 </div>
                             )}
 
-                            {/* Assignment */}
-                            <div className="mt-5 rounded-lg bg-canvas p-4">
-                                <div className="flex flex-wrap items-end gap-3">
-                                    <div className="min-w-48 flex-1">
-                                        <label
-                                            htmlFor={`assign-${task.id}`}
-                                            className="label"
-                                        >
-                                            Assign Manually
-                                        </label>
+                            {/* Assignment: Scrum Master only, while the sprint is open */}
+                            {isScrumMaster && !isLocked && (
+                                <div className="mt-5 rounded-lg bg-canvas p-4">
+                                    <div className="flex flex-wrap items-end gap-3">
+                                        <div className="min-w-48 flex-1">
+                                            <label
+                                                htmlFor={`assign-${task.id}`}
+                                                className="label"
+                                            >
+                                                Assign Manually
+                                            </label>
 
-                                        <select
-                                            id={`assign-${task.id}`}
-                                            value={task.assignedTo?.id ?? ""}
-                                            onChange={(event) => {
-                                                const memberId = event.target.value;
+                                            <select
+                                                id={`assign-${task.id}`}
+                                                value={task.assignedTo?.id ?? ""}
+                                                onChange={(event) => {
+                                                    const memberId = event.target.value;
 
-                                                if (memberId) {
-                                                    handleManualAssignment(task.id, memberId);
-                                                }
-                                            }}
-                                            className="input"
-                                        >
-                                            <option value="">Select team member</option>
+                                                    if (memberId) {
+                                                        handleManualAssignment(task.id, memberId);
+                                                    }
+                                                }}
+                                                className="input"
+                                            >
+                                                <option value="">Select team member</option>
 
-                                            {teamMembers.map((member) => (
-                                                <option key={member.id} value={member.id}>
-                                                    {member.name} ({member.role})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleRecommendAssignee(task.id)}
-                                        disabled={loadingRecommendation === task.id}
-                                        className="btn-secondary"
-                                    >
-                                        {loadingRecommendation === task.id
-                                            ? "Finding..."
-                                            : "Recommend Assignee"}
-                                    </button>
-                                </div>
-
-                                {recommendations[task.id]?.recommendedMember && (
-                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-soft p-4">
-                                        <div>
-                                            <p className="text-xs font-semibold text-muted">
-                                                Recommended Assignee
-                                            </p>
-
-                                            <p className="mt-1 text-sm font-medium">
-                                                {recommendations[task.id].recommendedMember?.name}
-                                                {" "}
-                                                ({recommendations[task.id].recommendedMember?.role})
-                                            </p>
-
-                                            <p className="mt-1 text-sm text-muted">
-                                                Skill Match:{" "}
-                                                {recommendations[task.id].recommendedMember?.matchPercentage}%
-                                            </p>
+                                                {/* Deactivated members cannot take new tasks, but the current assignee stays listed. */}
+                                                {teamMembers
+                                                    .filter(
+                                                        (member) =>
+                                                            member.isActive ||
+                                                            member.id === task.assignedTo?.id,
+                                                    )
+                                                    .map((member) => (
+                                                        <option key={member.id} value={member.id}>
+                                                            {member.name} ({member.role})
+                                                            {!member.isActive && " - deactivated"}
+                                                        </option>
+                                                    ))}
+                                            </select>
                                         </div>
 
                                         <button
                                             type="button"
-                                            onClick={() => {
-                                                const recommendedMember =
-                                                    recommendations[task.id]?.recommendedMember;
-
-                                                if (recommendedMember) {
-                                                    handleAssignRecommended(
-                                                        task.id,
-                                                        recommendedMember.memberId,
-                                                    );
-                                                }
-                                            }}
-                                            className="btn-primary"
+                                            onClick={() => handleRecommendAssignee(task.id)}
+                                            disabled={loadingRecommendation === task.id}
+                                            className="btn-secondary"
                                         >
-                                            Assign
+                                            {loadingRecommendation === task.id
+                                                ? "Finding..."
+                                                : "Recommend Assignee"}
                                         </button>
                                     </div>
-                                )}
-                            </div>
+
+                                    {recommendations[task.id]?.recommendedMember && (
+                                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-soft p-4">
+                                            <div>
+                                                <p className="text-xs font-semibold text-muted">
+                                                    Recommended Assignee
+                                                </p>
+
+                                                <p className="mt-1 text-sm font-medium">
+                                                    {recommendations[task.id].recommendedMember?.name}
+                                                    {" "}
+                                                    ({recommendations[task.id].recommendedMember?.role})
+                                                </p>
+
+                                                <p className="mt-1 text-sm text-muted">
+                                                    Skill Match:{" "}
+                                                    {recommendations[task.id].recommendedMember?.matchPercentage}%
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const recommendedMember =
+                                                        recommendations[task.id]?.recommendedMember;
+
+                                                    if (recommendedMember) {
+                                                        handleAssignRecommended(
+                                                            task.id,
+                                                            recommendedMember.memberId,
+                                                        );
+                                                    }
+                                                }}
+                                                className="btn-primary"
+                                            >
+                                                Assign
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </article>
                     ))}
                 </div>

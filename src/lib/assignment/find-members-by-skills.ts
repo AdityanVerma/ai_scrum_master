@@ -3,6 +3,7 @@ import { normalizeSkill } from '@/lib/assignment/normalize-skill';
 
 export async function findMembersBySkills(requiredSkills: string[]) {
   const members = await prisma.teamMember.findMany({
+    where: { isActive: true },
     include: {
       skills: true,
     },

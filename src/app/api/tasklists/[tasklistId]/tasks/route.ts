@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireTasklistAccess } from '@/lib/auth/tasklist-access';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(
@@ -7,6 +8,12 @@ export async function POST(
 ) {
   try {
     const { tasklistId } = await params;
+
+    const access = await requireTasklistAccess(tasklistId, 'write');
+
+    if (!access.ok) {
+      return access.response;
+    }
     const body = await request.json();
 
     const tasklist = await prisma.dailyTasklist.findUnique({
@@ -40,6 +47,21 @@ export async function POST(
         },
         { status: 400 },
       );
+    }
+
+    // A subtask's parent must be in the same list, never in someone else's.
+    if (parentTaskId) {
+      const parentTask = await prisma.tasklistTask.findFirst({
+        where: { id: parentTaskId, tasklistId },
+        select: { id: true },
+      });
+
+      if (!parentTask) {
+        return NextResponse.json(
+          { error: 'Parent task not found.' },
+          { status: 404 },
+        );
+      }
     }
 
     const task = await prisma.tasklistTask.create({
@@ -77,6 +99,12 @@ export async function DELETE(
 ) {
   try {
     const { tasklistId } = await params;
+
+    const access = await requireTasklistAccess(tasklistId, 'write');
+
+    if (!access.ok) {
+      return access.response;
+    }
 
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get('taskId');
@@ -146,6 +174,12 @@ export async function PUT(
 ) {
   try {
     const { tasklistId } = await params;
+
+    const access = await requireTasklistAccess(tasklistId, 'write');
+
+    if (!access.ok) {
+      return access.response;
+    }
     const body = await request.json();
 
     const { taskId, title, category, estimatedMins, status, priority } = body;

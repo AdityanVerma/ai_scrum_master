@@ -1,11 +1,17 @@
+import type { AccessRole } from '@/generated/prisma/enums';
 import { prisma } from '@/lib/prisma';
 
 export type CreateTeamMemberInput = {
   name: string;
   role: string;
   skills: string[];
+  email: string;
+  passwordHash: string;
+  accessRole: AccessRole;
 };
 
+// The member must choose their own password at first login
+// (mustChangePassword defaults to true).
 export async function createTeamMember(input: CreateTeamMemberInput) {
   const name = input.name.trim();
   const role = input.role.trim();
@@ -20,6 +26,9 @@ export async function createTeamMember(input: CreateTeamMemberInput) {
     data: {
       name,
       role,
+      email: input.email,
+      passwordHash: input.passwordHash,
+      accessRole: input.accessRole,
       skills: {
         create: skills.map((skill) => ({
           skill,

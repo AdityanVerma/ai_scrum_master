@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/dal';
 import { getTaskAssignmentCandidates } from '@/lib/assignment/get-task-assignment-candidates';
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireRole('SCRUM_MASTER');
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const body = await request.json();
     const taskId = body.taskId;
 

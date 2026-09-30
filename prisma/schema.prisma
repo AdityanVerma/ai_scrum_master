@@ -71,6 +71,14 @@ model TeamMember {
   name String
   role String
 
+  email              String?    @unique
+  passwordHash       String?
+  accessRole         AccessRole @default(MEMBER)
+  isActive           Boolean    @default(true)
+  mustChangePassword Boolean    @default(true)
+
+  createdDocuments Document[]
+
   skills        TeamMemberSkill[]
   assignedTasks SprintTask[]
   tasklists     DailyTasklist[]
@@ -130,11 +138,16 @@ model Document {
   sprintId String?
   sprint   Sprint? @relation(fields: [sprintId], references: [id], onDelete: SetNull)
 
+  createdById String?
+  createdBy   TeamMember? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
   tags      DocumentTagRelation[]
   functions DocumentFunctionRelation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 model DocumentTag {
@@ -236,6 +249,11 @@ model TasklistSnapshot {
 
   @@index([tasklistId])
   @@index([tasklistId, type])
+}
+
+enum AccessRole {
+  SCRUM_MASTER
+  MEMBER
 }
 
 enum TaskComplexity {

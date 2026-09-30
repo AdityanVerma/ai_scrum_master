@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { activateSprint } from "@/lib/db/activate-sprint";
+import { requireRole } from "@/lib/auth/dal";
 
 type RouteContext = {
     params: Promise<{
@@ -12,6 +13,12 @@ export async function PATCH(
     context: RouteContext,
 ) {
     try {
+        const auth = await requireRole("SCRUM_MASTER");
+
+        if (!auth.ok) {
+            return auth.response;
+        }
+
         const { id } = await context.params;
 
         const sprint = await activateSprint(id);
@@ -34,4 +41,4 @@ export async function PATCH(
             { status: 400 },
         );
     }
-}
+}

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/auth/dal';
 import { updateTaskStatus, type TaskStatus } from '@/lib/db/update-task-status';
+import { isSprintLocked } from '@/lib/sprint-status';
+import { prisma } from '@/lib/prisma';
 
 type RouteContext = {
   params: Promise<{
@@ -10,8 +13,15 @@ type RouteContext = {
 
 const validStatuses: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED'];
 
+// Scrum Master: any task. Member: only tasks assigned to them.
 export async function PATCH(request: Request, context: RouteContext) {
   try {
+    const auth = await requireSession();
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const { id, taskId } = await context.params;
     const body = await request.json();
 
@@ -27,17 +37,49 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const task = await updateTaskStatus(taskId, status);
+    const existing = await prisma.sprintTask.findUnique({
+      where: { id: taskId },
+      select: {
+        sprintId: true,
+        assignedToId: true,
+        sprint: { select: { status: true } },
+      },
+    });
 
-    if (task.sprintId !== id) {
+    if (!existing || existing.sprintId !== id) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Task does not belong to this sprint.',
+          error: 'Task not found in this sprint.',
+        },
+        { status: 404 },
+      );
+    }
+
+    if (
+      auth.member.accessRole !== 'SCRUM_MASTER' &&
+      existing.assignedToId !== auth.member.id
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You can only change the status of tasks assigned to you.',
+        },
+        { status: 403 },
+      );
+    }
+
+    if (isSprintLocked(existing.sprint.status)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Tasks in a ${existing.sprint.status} sprint cannot be changed.`,
         },
         { status: 400 },
       );
     }
+
+    const task = await updateTaskStatus(taskId, status);
 
     return NextResponse.json({
       success: true,

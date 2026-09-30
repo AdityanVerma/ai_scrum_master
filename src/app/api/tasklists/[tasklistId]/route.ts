@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireTasklistAccess } from '@/lib/auth/tasklist-access';
 import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
@@ -7,6 +8,12 @@ export async function PATCH(
 ) {
   try {
     const { tasklistId } = await params;
+
+    const access = await requireTasklistAccess(tasklistId, 'write');
+
+    if (!access.ok) {
+      return access.response;
+    }
     const body = await request.json();
 
     const { action } = body;
@@ -100,6 +107,12 @@ export async function GET(
   try {
     const { tasklistId } = await params;
 
+    const access = await requireTasklistAccess(tasklistId, 'read');
+
+    if (!access.ok) {
+      return access.response;
+    }
+
     const tasklist = await prisma.dailyTasklist.findUnique({
       where: { id: tasklistId },
       include: {
@@ -143,6 +156,12 @@ export async function POST(
 ) {
   try {
     const { tasklistId } = await params;
+
+    const access = await requireTasklistAccess(tasklistId, 'write');
+
+    if (!access.ok) {
+      return access.response;
+    }
     const body = await request.json();
 
     const { sourceTaskId } = body;
@@ -177,9 +196,11 @@ export async function POST(
 
     const sourceTask = await prisma.tasklistTask.findUnique({
       where: { id: sourceTaskId },
+      include: { tasklist: { select: { memberId: true } } },
     });
 
-    if (!sourceTask) {
+    // Only tasks from your own lists can be carried forward.
+    if (!sourceTask || sourceTask.tasklist.memberId !== access.member.id) {
       return NextResponse.json(
         { error: 'Source task not found.' },
         { status: 404 },

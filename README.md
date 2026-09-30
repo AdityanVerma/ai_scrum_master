@@ -29,7 +29,16 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Prisma 7 with Pos
    DATABASE_URL=            # PostgreSQL connection string used by the app
    PRISMA_DATABASE_URL=     # PostgreSQL connection string used by the Prisma CLI
    OPENROUTER_API_KEY=      # key used for the AI sprint planning steps
+   AUTH_SECRET=             # random secret (32+ characters) used to sign login sessions
    ```
+
+   Generate a value for `AUTH_SECRET` with:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+
+   Keep it private and use a different value in each environment. Changing it signs everyone out.
 
 3. Generate the Prisma client and apply the migrations:
 
@@ -38,7 +47,13 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Prisma 7 with Pos
    npx prisma migrate deploy
    ```
 
-4. Start the dev server and open [http://localhost:3000](http://localhost:3000):
+4. Create the first Scrum Master (Admin). Nobody can create the first admin from inside the app, so run this once. It updates the member with that name (or email) if one exists, and creates it otherwise:
+
+   ```bash
+   npm run create-admin -- --email you@example.com --password "your-password" --name "Your Name"
+   ```
+
+5. Start the dev server and open [http://localhost:3000](http://localhost:3000):
 
    ```bash
    npm run dev
@@ -53,6 +68,7 @@ Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Prisma 7 with Pos
 | `npm run start` | Run the production build |
 | `npm run lint` | Run ESLint |
 | `npm run format` | Format the code with Prettier |
+| `npm run create-admin -- --email ... --password ... --name ...` | Create or update the Scrum Master account |
 
 ## Project layout
 

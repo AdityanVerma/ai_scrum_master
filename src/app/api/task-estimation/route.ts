@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/dal';
 
 import { estimateTasks } from '@/lib/ai/sprint-planning/task-estimation';
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireRole('SCRUM_MASTER');
+
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const body = await request.json();
 
     if (!Array.isArray(body.tasks)) {

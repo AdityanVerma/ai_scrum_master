@@ -4,15 +4,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageContainer from "@/components/layout/PageContainer";
 import PageHeader from "@/components/layout/PageHeader";
+import OvertimeBadge from "@/components/sprints/OvertimeBadge";
+import {
+    countUnfinishedTasks,
+    sprintStatusStyles,
+    type SprintStatus,
+} from "@/components/sprints/shared";
 import { formatDate } from "@/lib/format-date";
 
 type Sprint = {
     id: string;
     name: string;
+    status: SprintStatus;
     goal: string;
     startDate: string;
     endDate: string;
     totalEstimatedHours: number;
+    tasks: { status: string }[];
 };
 
 export default function SprintsPage() {
@@ -70,9 +78,22 @@ export default function SprintsPage() {
             <div className="space-y-4">
                 {sprints.map((sprint) => (
                     <div key={sprint.id} className="card">
-                        <h2 className="text-xl font-semibold">
-                            {sprint.name}
-                        </h2>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <h2 className="text-xl font-semibold">
+                                {sprint.name}
+                            </h2>
+
+                            <span
+                                className={`badge ${sprintStatusStyles[sprint.status]}`}
+                            >
+                                {sprint.status}
+                            </span>
+
+                            <OvertimeBadge
+                                sprint={sprint}
+                                unfinishedTasks={countUnfinishedTasks(sprint.tasks)}
+                            />
+                        </div>
 
                         <p className="mt-2 text-muted">{sprint.goal}</p>
 
