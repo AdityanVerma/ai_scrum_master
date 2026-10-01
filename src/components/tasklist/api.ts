@@ -1,4 +1,4 @@
-import type { SprintTaskOption, Task } from "./shared";
+import type { SprintTaskOption, Task, Tasklist } from "./shared";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -73,4 +73,56 @@ export function carryOverTasks(tasklistId: string): Promise<{
     return request(`/api/tasklists/${tasklistId}/carry-over`, {
         method: "POST",
     });
+}
+
+type CapturedTasklist = Pick<Tasklist, "sodCapturedAt" | "eodCapturedAt">;
+
+export function startDay(
+    tasklistId: string,
+): Promise<{ tasklist: CapturedTasklist }> {
+    return request(`/api/tasklists/${tasklistId}`, {
+        method: "PATCH",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ action: "SOD" }),
+    });
+}
+
+export type EndDayEntry = {
+    taskId: string;
+    spentMins: number;
+    finishesSprintTask?: boolean;
+};
+
+export type SprintTaskChange = {
+    sprintTaskId: string;
+    taskId: string;
+    from: string;
+    to: string;
+};
+
+export type EndDayResult = {
+    tasklist: CapturedTasklist;
+    sprintTaskChanges: SprintTaskChange[];
+    // Time saved, status left alone.
+    skippedSprintTaskChanges: (SprintTaskChange & {
+        reason: "SPRINT_ENDED" | "REASSIGNED";
+    })[];
+};
+
+// Saves the time spent, updates linked sprint tasks and locks the list.
+export function endDay(
+    tasklistId: string,
+    tasks: EndDayEntry[],
+): Promise<EndDayResult> {
+    return request(`/api/tasklists/${tasklistId}`, {
+        method: "PATCH",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ action: "EOD", tasks }),
+    });
+}
+
+export async function fetchSnapshots(tasklistId: string) {
+    const data = await request(`/api/tasklists/${tasklistId}`);
+
+    return data.snapshots;
 }

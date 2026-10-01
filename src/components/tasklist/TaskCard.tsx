@@ -165,6 +165,8 @@ export default function TaskCard({
                 <div className="flex items-center gap-3">
                     <span className="text-sm text-muted">
                         {getPlannedMins(task, subtasks) / 60}h
+                        {task.spentMins != null &&
+                            ` · spent ${formatMinutes(task.spentMins)}`}
                     </span>
 
                     <StatusSelect

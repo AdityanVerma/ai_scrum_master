@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/dal';
-import { updateTaskStatus, type TaskStatus } from '@/lib/db/update-task-status';
+import { updateTaskStatus } from '@/lib/db/update-task-status';
 import { isSprintLocked } from '@/lib/sprint-status';
+import { TASK_STATUSES, type TaskStatus } from '@/lib/sprint-task-status';
 import { prisma } from '@/lib/prisma';
 
 type RouteContext = {
@@ -11,9 +12,8 @@ type RouteContext = {
   }>;
 };
 
-const validStatuses: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED'];
-
-// Scrum Master: any task. Member: only tasks assigned to them.
+// Scrum Master: any task, and reopening a DONE task. Member: only tasks
+// assigned to them, and not once they are DONE.
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const auth = await requireSession();
@@ -27,7 +27,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const status = body.status as TaskStatus;
 
-    if (!validStatuses.includes(status)) {
+    if (!TASK_STATUSES.includes(status)) {
       return NextResponse.json(
         {
           success: false,
@@ -42,6 +42,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       select: {
         sprintId: true,
         assignedToId: true,
+        status: true,
         sprint: { select: { status: true } },
       },
     });
@@ -64,6 +65,19 @@ export async function PATCH(request: Request, context: RouteContext) {
         {
           success: false,
           error: 'You can only change the status of tasks assigned to you.',
+        },
+        { status: 403 },
+      );
+    }
+
+    if (
+      existing.status === 'DONE' &&
+      auth.member.accessRole !== 'SCRUM_MASTER'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Only the Scrum Master can reopen a done task.',
         },
         { status: 403 },
       );

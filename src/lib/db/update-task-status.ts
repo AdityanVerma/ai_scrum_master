@@ -1,13 +1,7 @@
 import { prisma } from '@/lib/prisma';
+import { allowedTransitions, type TaskStatus } from '@/lib/sprint-task-status';
 
-export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED';
-
-const allowedTransitions: Record<TaskStatus, TaskStatus[]> = {
-  TODO: ['IN_PROGRESS', 'BLOCKED'],
-  IN_PROGRESS: ['TODO', 'DONE', 'BLOCKED'],
-  DONE: [],
-  BLOCKED: ['TODO', 'IN_PROGRESS'],
-};
+export type { TaskStatus };
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   const task = await prisma.sprintTask.findUnique({

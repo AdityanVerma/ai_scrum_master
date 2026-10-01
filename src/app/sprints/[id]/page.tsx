@@ -659,11 +659,14 @@ export default function SprintDetailPage() {
         (task) => task.functionId,
     );
 
-    // Scrum Master: any task. Member: only tasks assigned to them.
+    // Scrum Master: any task, including reopening a DONE one. Member: only
+    // tasks assigned to them, until they are DONE.
     function canChangeStatus(task: Task) {
         return (
             !isLocked &&
-            (isScrumMaster || task.assignedTo?.id === currentMember?.id)
+            (isScrumMaster ||
+                (task.assignedTo?.id === currentMember?.id &&
+                    task.status !== "DONE"))
         );
     }
 
@@ -878,10 +881,19 @@ export default function SprintDetailPage() {
                                                         aria-label="Task status"
                                                         className="input w-auto py-1"
                                                     >
-                                                        <option value="TODO">TODO</option>
-                                                        <option value="IN_PROGRESS">IN PROGRESS</option>
-                                                        <option value="DONE">DONE</option>
-                                                        <option value="BLOCKED">BLOCKED</option>
+                                                        {task.status === "DONE" ? (
+                                                            <>
+                                                                <option value="DONE">DONE</option>
+                                                                <option value="IN_PROGRESS">REOPEN (IN PROGRESS)</option>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <option value="TODO">TODO</option>
+                                                                <option value="IN_PROGRESS">IN PROGRESS</option>
+                                                                <option value="DONE">DONE</option>
+                                                                <option value="BLOCKED">BLOCKED</option>
+                                                            </>
+                                                        )}
                                                     </select>
                                                 ) : (
                                                     <span className={`badge ${taskStatusStyles[task.status]}`}>

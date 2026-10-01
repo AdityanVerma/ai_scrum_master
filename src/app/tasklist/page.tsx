@@ -6,10 +6,15 @@ import PageHeader from "@/components/layout/PageHeader";
 import { formatDate, toLocalDateString } from "@/lib/format-date";
 import AddTaskForm from "@/components/tasklist/AddTaskForm";
 import DaySummary from "@/components/tasklist/DaySummary";
+import EndDayModal from "@/components/tasklist/EndDayModal";
 import TaskCard from "@/components/tasklist/TaskCard";
 import {
     carryOverTasks,
+    fetchSnapshots,
     fetchSprintTaskOptions,
+    startDay,
+    type EndDayEntry,
+    type EndDayResult,
 } from "@/components/tasklist/api";
 import {
     formatMinutes,
@@ -34,6 +39,39 @@ type CurrentMember = {
     accessRole: "SCRUM_MASTER" | "MEMBER";
 };
 
+const statusLabels: Record<string, string> = {
+    TODO: "To Do",
+    IN_PROGRESS: "In Progress",
+    DONE: "Done",
+    BLOCKED: "Blocked",
+};
+
+// "Day ended. TASK-003 is now In Progress. TASK-007: time saved, ..."
+function describeEndDay(result: EndDayResult) {
+    const parts = ["Day ended."];
+
+    for (const change of result.sprintTaskChanges) {
+        parts.push(
+            change.to === "DONE"
+                ? `${change.taskId} is marked done.`
+                : `${change.taskId} is now ${statusLabels[change.to] ?? change.to}.`,
+        );
+    }
+
+    for (const skipped of result.skippedSprintTaskChanges) {
+        const reason =
+            skipped.reason === "SPRINT_ENDED"
+                ? "its sprint has ended"
+                : "it is no longer assigned to you";
+
+        parts.push(
+            `${skipped.taskId}: time saved, but its status was not changed because ${reason}.`,
+        );
+    }
+
+    return parts.join(" ");
+}
+
 export default function TasklistPage() {
     const [tasklist, setTasklist] = useState<Tasklist | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -53,7 +91,7 @@ export default function TasklistPage() {
     const [isCreatingTasklist, setIsCreatingTasklist] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
     const [isCapturingSod, setIsCapturingSod] = useState(false);
-    const [isCapturingEod, setIsCapturingEod] = useState(false);
+    const [isEndDayOpen, setIsEndDayOpen] = useState(false);
     const [availableHours, setAvailableHours] = useState("8");
     const [sprintTaskOptions, setSprintTaskOptions] = useState<SprintTaskOption[]>([]);
     const [isCarryingOver, setIsCarryingOver] = useState(false);
@@ -297,46 +335,94 @@ export default function TasklistPage() {
         }
     }
 
-    async function handleCapture(action: "SOD" | "EOD") {
+    // The day summary compares the Start Day and End Day snapshots.
+    async function reloadSnapshots(tasklistId: string) {
+        try {
+            setSnapshots(await fetchSnapshots(tasklistId));
+        } catch (error) {
+            console.error("Failed to reload snapshots:", error);
+        }
+    }
+
+    async function handleStartDay() {
         if (!tasklist) return;
 
-        const setCapturing =
-            action === "SOD" ? setIsCapturingSod : setIsCapturingEod;
-
         try {
-            setCapturing(true);
+            setIsCapturingSod(true);
 
-            const response = await fetch(`/api/tasklists/${tasklist.id}`, {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ action }),
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || `Failed to capture ${action}.`);
-            }
+            const result = await startDay(tasklist.id);
 
             setTasklist((current) =>
-                current ? { ...current, ...result.data } : current,
+                current
+                    ? { ...current, sodCapturedAt: result.tasklist.sodCapturedAt }
+                    : current,
             );
 
-            showNotice("success", `${action} captured successfully.`);
+            showNotice("success", "SOD captured successfully.");
+            reloadSnapshots(tasklist.id);
         } catch (error) {
-            console.error(`Failed to capture ${action}:`, error);
-            showNotice("error", `Failed to capture ${action}.`);
+            console.error("Failed to capture SOD:", error);
+            showNotice(
+                "error",
+                error instanceof Error ? error.message : "Failed to capture SOD.",
+            );
         } finally {
-            setCapturing(false);
+            setIsCapturingSod(false);
+        }
+    }
+
+    // End Day saved the time spent and may have moved linked sprint tasks.
+    function handleDayEnded(result: EndDayResult, entries: EndDayEntry[]) {
+        const spentByTask = new Map(
+            entries.map((entry) => [entry.taskId, entry.spentMins]),
+        );
+        const newStatus = new Map(
+            result.sprintTaskChanges.map((change) => [
+                change.sprintTaskId,
+                change.to,
+            ]),
+        );
+
+        setTasklist((current) =>
+            current
+                ? {
+                    ...current,
+                    eodCapturedAt: result.tasklist.eodCapturedAt,
+                    tasks: current.tasks.map((task) => ({
+                        ...task,
+                        ...(spentByTask.has(task.id) && {
+                            spentMins: spentByTask.get(task.id),
+                        }),
+                        ...(task.sprintTask &&
+                            newStatus.has(task.sprintTask.id) && {
+                            sprintTask: {
+                                ...task.sprintTask,
+                                status:
+                                    newStatus.get(task.sprintTask.id) ??
+                                    task.sprintTask.status,
+                            },
+                        }),
+                    })),
+                }
+                : current,
+        );
+
+        setIsEndDayOpen(false);
+        showNotice("success", describeEndDay(result));
+
+        if (tasklist) {
+            reloadSnapshots(tasklist.id);
         }
     }
 
     useEffect(() => {
         if (!notice) return;
 
-        const timer = setTimeout(() => setNotice(null), 5000);
+        // Longer messages (End Day notes) stay up a little longer.
+        const timer = setTimeout(
+            () => setNotice(null),
+            notice.message.length > 80 ? 10000 : 5000,
+        );
 
         return () => clearTimeout(timer);
     }, [notice]);
@@ -581,7 +667,7 @@ export default function TasklistPage() {
                                 <button
                                     type="button"
                                     disabled={isCapturingSod || !!tasklist.sodCapturedAt}
-                                    onClick={() => handleCapture("SOD")}
+                                    onClick={handleStartDay}
                                     className="btn-secondary"
                                 >
                                     {isCapturingSod
@@ -594,15 +680,11 @@ export default function TasklistPage() {
                                 {/* EOD - End of Day button */}
                                 <button
                                     type="button"
-                                    disabled={isCapturingEod || isLocked}
-                                    onClick={() => handleCapture("EOD")}
+                                    disabled={isLocked}
+                                    onClick={() => setIsEndDayOpen(true)}
                                     className="btn-secondary"
                                 >
-                                    {isCapturingEod
-                                        ? "Capturing..."
-                                        : isLocked
-                                            ? "EOD Captured"
-                                            : "End Day"}
+                                    {isLocked ? "EOD Captured" : "End Day"}
                                 </button>
 
                                 {/* Copies yesterday's unfinished tasks into today's list */}
@@ -645,6 +727,16 @@ export default function TasklistPage() {
                 </div>
 
                 {snapshots.length > 0 && <DaySummary snapshots={snapshots} />}
+
+                {isEndDayOpen && isOwnList && !isLocked && (
+                    <EndDayModal
+                        tasklistId={tasklist.id}
+                        tasks={parentTasks}
+                        subtasksOf={subtasksOf}
+                        onClose={() => setIsEndDayOpen(false)}
+                        onEnded={handleDayEnded}
+                    />
+                )}
 
                 {isAddingTask && isOwnList && (
                     <AddTaskForm

@@ -1,11 +1,30 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireTasklistAccess } from '@/lib/auth/tasklist-access';
+import { AlreadyEndedError, endDay, EndDayError } from '@/lib/db/end-day';
 import {
   isLinkableSprintTask,
   linkedSprintTaskSelect,
 } from '@/lib/db/sprint-task-links';
 import { prisma } from '@/lib/prisma';
 
+// Time spent on each main task, sent with End Day (PHASE-8 section 5).
+const endDayTasksSchema = z
+  .array(
+    z.object({
+      taskId: z.string().min(1),
+      spentMins: z
+        .number('Time spent must be a number of minutes.')
+        .int('Time spent must be whole minutes.')
+        .min(0, 'Time spent cannot be negative.')
+        .max(24 * 60, 'Time spent cannot be more than 24 hours.'),
+      finishesSprintTask: z.boolean().optional(),
+    }),
+  )
+  .max(500);
+
+// Start Day (SOD) or End Day (EOD): takes a snapshot of the list. End Day
+// also saves the time spent, updates linked sprint tasks and locks the list.
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ tasklistId: string }> },
@@ -18,9 +37,9 @@ export async function PATCH(
     if (!access.ok) {
       return access.response;
     }
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
 
-    const { action } = body;
+    const action = body?.action;
 
     if (!action) {
       return NextResponse.json(
@@ -36,19 +55,7 @@ export async function PATCH(
       );
     }
 
-    const tasklist = await prisma.dailyTasklist.findUnique({
-      where: { id: tasklistId },
-      include: {
-        snapshots: true,
-      },
-    });
-
-    if (!tasklist) {
-      return NextResponse.json(
-        { error: 'Tasklist not found.' },
-        { status: 404 },
-      );
-    }
+    const tasklist = access.tasklist;
 
     if (action === 'SOD' && tasklist.sodCapturedAt) {
       return NextResponse.json(
@@ -64,13 +71,41 @@ export async function PATCH(
       );
     }
 
+    if (action === 'EOD') {
+      // Without a time list (older pages) End Day only locks the list.
+      const entries = endDayTasksSchema.safeParse(body.tasks ?? []);
+
+      if (!entries.success) {
+        return NextResponse.json(
+          {
+            error:
+              entries.error.issues[0]?.message ?? 'Invalid time spent.',
+          },
+          { status: 400 },
+        );
+      }
+
+      const result = await endDay(tasklist, entries.data);
+
+      return NextResponse.json({
+        success: true,
+        data: result,
+      });
+    }
+
+    if (body.tasks !== undefined) {
+      return NextResponse.json(
+        { error: 'Time spent is entered at End Day.' },
+        { status: 400 },
+      );
+    }
+
     const updatedTasklist = await prisma.$transaction(async (tx) => {
       const now = new Date();
 
       const updated = await tx.dailyTasklist.update({
         where: { id: tasklistId },
-        data:
-          action === 'SOD' ? { sodCapturedAt: now } : { eodCapturedAt: now },
+        data: { sodCapturedAt: now },
       });
 
       const tasks = await tx.tasklistTask.findMany({
@@ -92,9 +127,17 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      data: updatedTasklist,
+      data: { tasklist: updatedTasklist },
     });
   } catch (error) {
+    if (error instanceof EndDayError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    if (error instanceof AlreadyEndedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+
     console.error('SOD/EOD tracking error:', error);
 
     return NextResponse.json(

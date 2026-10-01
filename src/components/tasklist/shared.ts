@@ -5,6 +5,8 @@ export type LinkedSprintTask = {
     id: string;
     taskId: string;
     title: string;
+    // The sprint task's own status (TODO, IN_PROGRESS, DONE, BLOCKED).
+    status: string;
     sprint: {
         id: string;
         name: string;
@@ -35,6 +37,8 @@ export type Task = {
     // Only main tasks are linked; subtasks follow their parent.
     sprintTaskId?: string | null;
     totalEstimateMins?: number | null;
+    // Time actually spent, entered at End Day (main tasks only).
+    spentMins?: number | null;
     // Not in snapshots, which only keep the task's own fields.
     sprintTask?: LinkedSprintTask | null;
 };

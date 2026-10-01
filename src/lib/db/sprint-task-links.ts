@@ -10,6 +10,7 @@ export const linkedSprintTaskSelect = {
   id: true,
   taskId: true,
   title: true,
+  status: true,
   sprint: { select: { id: true, name: true } },
   function: { select: { id: true, name: true } },
 } satisfies Prisma.SprintTaskSelect;
