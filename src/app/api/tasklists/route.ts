@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/dal';
 import { prisma } from '@/lib/prisma';
 import { createTasklist } from '@/lib/db/create-tasklist';
+import { linkedSprintTaskSelect } from '@/lib/db/sprint-task-links';
 
 export async function GET(request: Request) {
   try {
@@ -50,6 +51,9 @@ export async function GET(request: Request) {
         tasks: {
           orderBy: {
             order: 'asc',
+          },
+          include: {
+            sprintTask: { select: linkedSprintTaskSelect },
           },
         },
       },

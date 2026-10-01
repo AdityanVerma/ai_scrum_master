@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireTasklistAccess } from '@/lib/auth/tasklist-access';
+import {
+  isLinkableSprintTask,
+  linkedSprintTaskSelect,
+} from '@/lib/db/sprint-task-links';
 import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
@@ -227,6 +231,12 @@ export async function POST(
 
     const nextOrder = existingTasks.length > 0 ? existingTasks[0].order + 1 : 1;
 
+    // The link is kept while the sprint task can still be linked.
+    const keepLink =
+      sourceTask.sprintTaskId !== null &&
+      !sourceTask.parentTaskId &&
+      (await isLinkableSprintTask(access.member.id, sourceTask.sprintTaskId));
+
     const carriedTask = await prisma.tasklistTask.create({
       data: {
         tasklistId,
@@ -237,7 +247,10 @@ export async function POST(
         status: 'PENDING',
         priority: sourceTask.priority,
         carriedForwardFromId: sourceTask.id,
+        sprintTaskId: keepLink ? sourceTask.sprintTaskId : null,
+        totalEstimateMins: sourceTask.totalEstimateMins,
       },
+      include: { sprintTask: { select: linkedSprintTaskSelect } },
     });
 
     return NextResponse.json(

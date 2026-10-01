@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 import { createTask, deleteTask, updateTask } from "./api";
-import { getPlannedMins, type Task } from "./shared";
+import {
+    formatMinutes,
+    getLinkLabel,
+    getPlannedMins,
+    type SprintTaskOption,
+    type Task,
+} from "./shared";
+import SprintLinkFields, {
+    EMPTY_LINK_FIELDS,
+    toLinkPayload,
+} from "./SprintLinkFields";
 import StatusSelect from "./StatusSelect";
 import SubtaskFields, { EMPTY_SUBTASK_FIELDS } from "./SubtaskFields";
 import SubtaskRow from "./SubtaskRow";
@@ -12,6 +22,8 @@ type TaskCardProps = {
     tasklistId: string;
     task: Task;
     subtasks: Task[];
+    // Sprint tasks the owner can link this task to.
+    sprintTaskOptions: SprintTaskOption[];
     locked: boolean;
     onCreated: (task: Task) => void;
     onUpdated: (task: Task) => void;
@@ -29,6 +41,7 @@ export default function TaskCard({
     tasklistId,
     task,
     subtasks,
+    sprintTaskOptions,
     locked,
     onCreated,
     onUpdated,
@@ -37,6 +50,7 @@ export default function TaskCard({
 }: TaskCardProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValues, setEditValues] = useState(EMPTY_TASK_FIELDS);
+    const [editLink, setEditLink] = useState(EMPTY_LINK_FIELDS);
     const [isAddingSubtask, setIsAddingSubtask] = useState(false);
     const [subtaskValues, setSubtaskValues] = useState(EMPTY_SUBTASK_FIELDS);
 
@@ -65,13 +79,16 @@ export default function TaskCard({
                 estimatedMins: Number(editValues.estimatedMins),
                 status: task.status,
                 priority: editValues.priority,
+                ...toLinkPayload(editLink),
             });
 
             onUpdated(updated);
             setIsEditing(false);
         } catch (error) {
             console.error("Failed to update task:", error);
-            onError("Failed to update task.");
+            onError(
+                error instanceof Error ? error.message : "Failed to update task.",
+            );
         }
     }
 
@@ -113,7 +130,7 @@ export default function TaskCard({
         <div className="rounded-lg border border-line bg-surface p-4">
             <div className="flex items-start justify-between">
                 <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <p className="text-xs font-medium text-brand-strong">
                             {task.category}
                         </p>
@@ -123,6 +140,21 @@ export default function TaskCard({
                         >
                             {task.priority}
                         </span>
+
+                        {task.sprintTask && (
+                            <span
+                                className="badge badge-brand py-0.5"
+                                title={`${task.sprintTask.sprint.name}: ${task.sprintTask.title}`}
+                            >
+                                {getLinkLabel(task.sprintTask)}
+                            </span>
+                        )}
+
+                        {task.totalEstimateMins ? (
+                            <span className="badge badge-muted py-0.5">
+                                {formatMinutes(task.totalEstimateMins)} in total
+                            </span>
+                        ) : null}
                     </div>
 
                     <h3 className="mt-1 font-medium">
@@ -150,6 +182,12 @@ export default function TaskCard({
                                 priority: task.priority,
                                 estimatedMins: String(task.estimatedMins),
                             });
+                            setEditLink({
+                                sprintTaskId: task.sprintTaskId ?? "",
+                                totalEstimateHours: task.totalEstimateMins
+                                    ? String(task.totalEstimateMins / 60)
+                                    : "",
+                            });
                             setIsEditing(true);
                         }}
                         disabled={locked}
@@ -171,6 +209,15 @@ export default function TaskCard({
 
             {isEditing && (
                 <div className="mt-4 rounded-lg border border-line bg-canvas p-4">
+                    <div className="mb-4">
+                        <SprintLinkFields
+                            values={editLink}
+                            options={sprintTaskOptions}
+                            current={task.sprintTask}
+                            onChange={(next) => setEditLink(next)}
+                        />
+                    </div>
+
                     <TaskFields values={editValues} onChange={setEditValues} />
 
                     <div className="mt-4 flex gap-2">

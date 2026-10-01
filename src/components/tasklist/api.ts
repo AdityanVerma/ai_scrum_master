@@ -1,4 +1,4 @@
-import type { Task } from "./shared";
+import type { SprintTaskOption, Task } from "./shared";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -22,6 +22,8 @@ export function createTask(
         order: number;
         priority?: string;
         parentTaskId?: string;
+        sprintTaskId?: string | null;
+        totalEstimateMins?: number | null;
     },
 ): Promise<Task> {
     return request(`/api/tasklists/${tasklistId}/tasks`, {
@@ -40,6 +42,9 @@ export function updateTask(
         estimatedMins?: number;
         status?: string;
         priority?: string;
+        // null clears the link or the total estimate.
+        sprintTaskId?: string | null;
+        totalEstimateMins?: number | null;
     },
 ): Promise<Task> {
     return request(`/api/tasklists/${tasklistId}/tasks`, {
@@ -52,5 +57,20 @@ export function updateTask(
 export async function deleteTask(tasklistId: string, taskId: string) {
     await request(`/api/tasklists/${tasklistId}/tasks?taskId=${taskId}`, {
         method: "DELETE",
+    });
+}
+
+// Sprint tasks assigned to the signed-in member in active sprints.
+export function fetchSprintTaskOptions(): Promise<SprintTaskOption[]> {
+    return request("/api/tasklists/sprint-tasks");
+}
+
+export function carryOverTasks(tasklistId: string): Promise<{
+    fromDate: string | null;
+    tasks: Task[];
+    droppedLinks: number;
+}> {
+    return request(`/api/tasklists/${tasklistId}/carry-over`, {
+        method: "POST",
     });
 }

@@ -8,8 +8,15 @@ import AddTaskForm from "@/components/tasklist/AddTaskForm";
 import DaySummary from "@/components/tasklist/DaySummary";
 import TaskCard from "@/components/tasklist/TaskCard";
 import {
+    carryOverTasks,
+    fetchSprintTaskOptions,
+} from "@/components/tasklist/api";
+import {
+    formatMinutes,
     getPlannedMins,
+    groupTasksByFeature,
     type Snapshot,
+    type SprintTaskOption,
     type Task,
     type Tasklist,
 } from "@/components/tasklist/shared";
@@ -48,6 +55,9 @@ export default function TasklistPage() {
     const [isCapturingSod, setIsCapturingSod] = useState(false);
     const [isCapturingEod, setIsCapturingEod] = useState(false);
     const [availableHours, setAvailableHours] = useState("8");
+    const [sprintTaskOptions, setSprintTaskOptions] = useState<SprintTaskOption[]>([]);
+    const [isCarryingOver, setIsCarryingOver] = useState(false);
+    const [groupByFeature, setGroupByFeature] = useState(false);
 
     // Everyone starts on their own list. Only the Scrum Master can open
     // someone else's, and only to read it.
@@ -148,6 +158,28 @@ export default function TasklistPage() {
         };
     }, [memberId, reloadKey]);
 
+    // The sprint tasks the signed-in member can link their own tasks to.
+    const tasklistId = tasklist?.id;
+    const isOwnList = memberId !== null && memberId === currentMember?.id;
+
+    useEffect(() => {
+        if (!tasklistId || !isOwnList) return;
+
+        let cancelled = false;
+
+        fetchSprintTaskOptions()
+            .then((options) => {
+                if (!cancelled) setSprintTaskOptions(options);
+            })
+            .catch((error) => {
+                console.error("Failed to load your sprint tasks:", error);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [tasklistId, isOwnList]);
+
     function handleMemberChange(id: string) {
         setMemberId(id);
         setTasklist(null);
@@ -221,6 +253,50 @@ export default function TasklistPage() {
         );
     }
 
+    // Copies the unfinished tasks of the previous tasklist into this one.
+    async function handleCarryOver() {
+        if (!tasklist) return;
+
+        try {
+            setIsCarryingOver(true);
+
+            const result = await carryOverTasks(tasklist.id);
+
+            if (!result.fromDate) {
+                showNotice("success", "There is no earlier tasklist to carry over from.");
+                return;
+            }
+
+            const from = formatDate(result.fromDate);
+            const carried = result.tasks.filter((task) => !task.parentTaskId).length;
+
+            if (carried === 0) {
+                showNotice("success", `Nothing left to carry over from ${from}.`);
+                return;
+            }
+
+            updateTasks((tasks) => [...tasks, ...result.tasks]);
+
+            const dropped =
+                result.droppedLinks > 0
+                    ? ` ${result.droppedLinks} sprint ${result.droppedLinks === 1 ? "link was" : "links were"} removed: that sprint task is no longer open to you.`
+                    : "";
+
+            showNotice(
+                "success",
+                `Carried over ${carried} unfinished ${carried === 1 ? "task" : "tasks"} from ${from}.${dropped}`,
+            );
+        } catch (error) {
+            console.error("Failed to carry over tasks:", error);
+            showNotice(
+                "error",
+                error instanceof Error ? error.message : "Failed to carry over tasks.",
+            );
+        } finally {
+            setIsCarryingOver(false);
+        }
+    }
+
     async function handleCapture(action: "SOD" | "EOD") {
         if (!tasklist) return;
 
@@ -265,7 +341,6 @@ export default function TasklistPage() {
         return () => clearTimeout(timer);
     }, [notice]);
 
-    const isOwnList = memberId !== null && memberId === currentMember?.id;
     const viewedMemberName =
         tasklist?.member.name ??
         members.find((member) => member.id === memberId)?.name ??
@@ -390,6 +465,30 @@ export default function TasklistPage() {
 
     const isLocked = !!tasklist.eodCapturedAt;
 
+    const subtasksOf = (task: Task) =>
+        tasklist.tasks.filter((subtask) => subtask.parentTaskId === task.id);
+
+    const hasLinkedTasks = parentTasks.some((task) => task.sprintTask);
+    const featureGroups =
+        groupByFeature && hasLinkedTasks
+            ? groupTasksByFeature(parentTasks)
+            : null;
+
+    const renderTask = (task: Task) => (
+        <TaskCard
+            key={task.id}
+            tasklistId={tasklist.id}
+            task={task}
+            subtasks={subtasksOf(task)}
+            sprintTaskOptions={sprintTaskOptions}
+            locked={isLocked || !isOwnList}
+            onCreated={handleTaskCreated}
+            onUpdated={handleTaskUpdated}
+            onDeleted={handleTaskDeleted}
+            onError={(message) => showNotice("error", message)}
+        />
+    );
+
     return (
         <PageContainer>
             {notice && (
@@ -437,7 +536,7 @@ export default function TasklistPage() {
             />
 
             <section className="card">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <h2 className="text-xl font-semibold">
                             Today&apos;s Tasks
@@ -470,7 +569,7 @@ export default function TasklistPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <span className="text-sm text-muted">
                             {tasklist.tasks.length} tasks
                         </span>
@@ -506,6 +605,18 @@ export default function TasklistPage() {
                                             : "End Day"}
                                 </button>
 
+                                {/* Copies yesterday's unfinished tasks into today's list */}
+                                <button
+                                    type="button"
+                                    onClick={handleCarryOver}
+                                    disabled={isCarryingOver || isLocked}
+                                    className="btn-secondary"
+                                >
+                                    {isCarryingOver
+                                        ? "Carrying over..."
+                                        : "Carry Over Unfinished"}
+                                </button>
+
                                 {/* Add Task button */}
                                 <button
                                     type="button"
@@ -539,6 +650,8 @@ export default function TasklistPage() {
                     <AddTaskForm
                         tasklistId={tasklist.id}
                         nextOrder={parentTasks.length + 1}
+                        sprintTaskOptions={sprintTaskOptions}
+                        availableMins={availableMins}
                         onCreated={(task) => {
                             handleTaskCreated(task);
                             setIsAddingTask(false);
@@ -548,28 +661,46 @@ export default function TasklistPage() {
                     />
                 )}
 
+                {hasLinkedTasks && (
+                    <label className="mt-4 flex w-fit items-center gap-2 text-sm text-muted">
+                        <input
+                            type="checkbox"
+                            checked={groupByFeature}
+                            onChange={(event) =>
+                                setGroupByFeature(event.target.checked)
+                            }
+                        />
+                        Group by feature
+                    </label>
+                )}
+
                 {tasklist.tasks.length === 0 ? (
                     <p className="empty-state mt-6">No tasks added yet.</p>
+                ) : featureGroups ? (
+                    <div className="mt-6 space-y-6">
+                        {featureGroups.map((group) => (
+                            <div key={group.key}>
+                                <h3 className="text-sm font-semibold text-muted">
+                                    {group.label} ·{" "}
+                                    {formatMinutes(
+                                        group.tasks.reduce(
+                                            (total, task) =>
+                                                total +
+                                                getPlannedMins(task, subtasksOf(task)),
+                                            0,
+                                        ),
+                                    )}
+                                </h3>
+
+                                <div className="mt-2 space-y-3">
+                                    {group.tasks.map(renderTask)}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 ) : (
                     <div className="mt-6 space-y-3">
-                        {parentTasks.map((task) => (
-                            <TaskCard
-                                key={task.id}
-                                tasklistId={tasklist.id}
-                                task={task}
-                                subtasks={tasklist.tasks.filter(
-                                    (subtask) =>
-                                        subtask.parentTaskId === task.id,
-                                )}
-                                locked={isLocked || !isOwnList}
-                                onCreated={handleTaskCreated}
-                                onUpdated={handleTaskUpdated}
-                                onDeleted={handleTaskDeleted}
-                                onError={(message) =>
-                                    showNotice("error", message)
-                                }
-                            />
-                        ))}
+                        {parentTasks.map(renderTask)}
                     </div>
                 )}
             </section>
