@@ -23,7 +23,7 @@ Manual validation is required to ensure that daily tasks contain sufficient and 
 * Large chunks of work being divided into smaller, actionable tasks.
 * Specific and sufficient task details.
 * ✅ Estimated time.
-* Actual time spent.
+* ✅ Actual time spent (entered at End Day, pre-filled with the estimate).
 * Reason for pending or delayed tasks.
 * Whether the developer exceeded the estimated time.
 * Whether the original estimate was reasonable or acceptable.
@@ -482,6 +482,6 @@ These pain points provide the foundation for the Internal Management System to s
                        AI Scrum Master
 ```
 
-The existing **Phase 1–6 implementation** provides the foundation for several of these areas, particularly persistence, sprint management, execution tracking, team assignment, documentation, and daily SOD/EOD tracking.
+The existing **Phase 1–7 implementation** (plus Phase 8 steps 8.1 to 8.4) provides the foundation for several of these areas, particularly persistence, sprint management, execution tracking, team assignment, documentation, daily SOD/EOD tracking, sign-in and roles, function weights, linking daily tasks to sprint tasks, and time spent.
 
 The remaining phases can progressively address the higher-level **automation, intelligence, traceability, analysis, notification, and decision-support** requirements identified above.

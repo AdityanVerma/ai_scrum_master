@@ -26,6 +26,7 @@
 TODO.md
 AGENTS.md
 /_data_
+/_docs_
 
 # debug
 npm-debug.log*

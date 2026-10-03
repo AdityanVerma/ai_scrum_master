@@ -6,6 +6,7 @@ import PageContainer from "@/components/layout/PageContainer";
 import PageHeader from "@/components/layout/PageHeader";
 import AddMemberModal from "@/components/team/AddMemberModal";
 import ResetPasswordModal from "@/components/team/ResetPasswordModal";
+import TimeOffSection from "@/components/team/TimeOffSection";
 import type { TeamMember } from "@/components/team/shared";
 
 type CurrentMember = {
@@ -308,6 +309,9 @@ export default function TeamMembersPage() {
                     );
                 })}
             </div>
+
+            {/* Public holidays and leave, for the Daily Sprint Diary */}
+            {isScrumMaster && <TimeOffSection members={teamMembers} />}
 
             {isAddMemberOpen && (
                 <AddMemberModal

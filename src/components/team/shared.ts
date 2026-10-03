@@ -14,3 +14,17 @@ export type TeamMember = {
         skill: string;
     }[];
 };
+
+// A public holiday or leave entry, as GET /api/time-off returns it.
+export type TimeOffEntry = {
+    id: string;
+    type: "LEAVE" | "PUBLIC_HOLIDAY";
+    startDate: string;
+    endDate: string;
+    note: string | null;
+    member: {
+        id: string;
+        name: string;
+        isActive: boolean;
+    };
+};

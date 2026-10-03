@@ -125,6 +125,8 @@ model TeamMember {
   skills        TeamMemberSkill[]
   assignedTasks SprintTask[]
   tasklists     DailyTasklist[]
+  timeOff       TimeOff[]
+  diaries       SprintDiary[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -305,6 +307,67 @@ model TasklistSnapshot {
 
   @@index([tasklistId])
   @@index([tasklistId, type])
+}
+
+// Public holidays and leave, entered by the Scrum Master (Daily Sprint Diary
+// decision D4). The diary lists upcoming ones; Phase 10 (capacity) will use
+// them too. A public holiday is recorded per member, because the team works
+// in more than one region.
+model TimeOff {
+  id String @id @default(cuid())
+
+  memberId String
+  member   TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  type TimeOffType
+
+  // Both days included, stored as midnight UTC like tasklist dates.
+  startDate DateTime
+  endDate   DateTime
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([endDate])
+}
+
+// One diary per date. The header is text the Scrum Master edits (decision
+// D3); a new diary starts as a copy of the previous one. The people and time
+// off parts are generated from tasklists and time off when the diary is shown.
+// Once published, the exact posted text is kept and the diary is final (D7).
+model SprintDiary {
+  id String @id @default(cuid())
+
+  // Midnight UTC of the diary's day.
+  date DateTime @unique
+
+  phase      String       @default("")
+  macroScope String       @default("")
+  microScope String       @default("")
+  status     DiaryStatus?
+
+  publishedText String?
+  publishedAt   DateTime?
+
+  publishedById String?
+  publishedBy   TeamMember? @relation(fields: [publishedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TimeOffType {
+  LEAVE
+  PUBLIC_HOLIDAY
+}
+
+enum DiaryStatus {
+  RED
+  ORANGE
+  GREEN
 }
 
 enum AccessRole {
