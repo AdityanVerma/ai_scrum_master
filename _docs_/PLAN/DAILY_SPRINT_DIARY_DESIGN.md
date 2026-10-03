@@ -1,6 +1,6 @@
 # Daily Sprint Diary — Design
 
-*Design only; nothing here is built yet. Written 30 September 2026 from the sample diaries in `_data_/sprintDiary.data.txt` (Aug 19 to Sep 29) and tasklists in `_data_/tasklists.data.txt`. Decisions confirmed the same day, all as recommended.*
+*Written 30 September 2026 from the sample diaries in `_data_/sprintDiary.data.txt` (Aug 19 to Sep 29) and tasklists in `_data_/tasklists.data.txt`. Decisions confirmed the same day, all as recommended. **Built 3 October 2026**: section 7 describes what was built and where it differs from this design and from the samples.*
 
 *Build order: the time spent, the sprint-task link, the total estimate and the new categories (D1, D2, D5) are built in **Phase 8 steps 8.1 to 8.4** (`_docs_/PLAN/SUB-PHASES/PHASE-8.md`). The diary is built after them, with the steps in section 6.*
 
@@ -153,3 +153,48 @@ Time spent, the sprint-task link, the carry-over button and the new categories c
 5. **Check against the samples**: generate diaries for a few test days and compare with the real ones in `_data_/`; tests per role; README and PHASE notes.
 
 Each step ends with `npm run lint` and `npm run build`, as before.
+
+---
+
+# 7. As Built (3 October 2026)
+
+## Where it is
+
+| Part | Where |
+| ---- | ----- |
+| Time off (Scrum Master) | Team page, **Time Off** section; `GET/POST /api/time-off`, `DELETE /api/time-off/[id]` |
+| Diary page (Scrum Master) | `/sprint-diary`, "Sprint Diary" in the header; Members get the Not allowed page |
+| Diary API (Scrum Master) | `GET /api/sprint-diary/[date]` (build), `PUT` (save header), `POST /api/sprint-diary/[date]/publish`, `GET /api/sprint-diary` (past diaries) |
+| Text format | `src/lib/sprint-diary/format.ts` (pure functions, shared by the API and the page preview) |
+| Data | `src/lib/sprint-diary/build-diary.ts`; tables `TimeOff` and `SprintDiary` |
+
+## How the generated parts work
+
+* **Header**: the one saved for the date; otherwise a copy of the latest earlier diary; otherwise a new one with one macro-scope line per active sprint. Empty header parts are left out of the text, and the page warns before publishing an incomplete header.
+* **Overtime**: one line per active sprint past its end date, at the top of the micro scope (`[Overtime] Sprint 16 - 6 days over, 4 unfinished tasks`). Inside each person's block, tasks linked to that sprint are listed last under `## [Overtime] Sprint 16`, numbered on from the rest, as in the late-September diaries.
+* **People**: every active member, by name. The latest earlier list is labelled `Yesterday` when it is from the day before, by weekday within the past week (Monday shows `Friday`, as the team writes it), and by date when older. No list for the day shows `Today [To be updated]`, or `Today [Leave]` / `[Public holiday]` when the person is off.
+* **Task lines**: `1. [Category] Title - <time> [<total spent>/<total estimate>]`. The time is the time spent when the day was ended with time, otherwise the planned time.
+  * Linked to a sprint task: total spent = all time logged against it, by anyone, up to that day, plus this list's time; total estimate = the sprint task's estimate.
+  * Not linked, with a total estimate: total spent follows the carry-over chain.
+  * Otherwise only the day's time is shown.
+* **Time off**: entries not over yet, for active members. Public holidays are grouped by day (`A, B - Oct 2 (note)`); leave has one line per entry.
+* **Publish** stores the exact text shown in the preview. A published diary cannot be changed (both saving and publishing again are refused), and two Publish clicks cannot both go through.
+
+## Compared with the samples
+
+Three person-days from `_data_/` were rebuilt as test data (names replaced) and generated: the 1 Sep tasklist (sprint work at `[17hr/18hr]`, carried work outside the sprint at `[16hr/50hr]`), the Sep 24 diary (today's plan with Sprint 16 overtime at `[35hr/48hr]`) and the Monday Sep 28 diary (`Friday`). The lines and totals match. The differences are deliberate:
+
+| Samples | Generated | Why |
+| ------- | --------- | --- |
+| `1Hr`, `0.5hr`, `1 hr 30 min`, `2 hrs` | `1hr`, `30min`, `1hr 30min`, `2hr` | One way of writing time |
+| Subtasks with their own totals (`1.1 Frontend - 4Hr [4/8]`) | `1.1 Frontend - 4hr` (planned time) | Time is logged on main tasks only, so subtasks are not counted twice |
+| Some tasks with no category | Every task has one | A category is required when adding a task |
+| `Sept 4, 17` on one line; past dates kept | One line per day; only time off that is not over | The team asked to drop last week's dates |
+| `## [Overtime] Sprint - 16` | `## [Overtime] Sprint 16` | Uses the sprint's name |
+| Leave reasons sometimes typed in | Leave notes are not shown (holiday notes are) | Leave notes can be personal |
+
+## Still open
+
+* Structured milestones with slipped-date history (decision D3) wait for Phase 8 part B; the header stays text.
+* The diary header could later show sprint progress (`62% complete, projected finish 14 Oct`) once Phase 8 step 5 exists.
+* Tasklists edited after publishing do not change a published diary, by design. Unpublished diaries are always rebuilt from current data.

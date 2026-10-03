@@ -697,7 +697,7 @@ The Upload Document option currently reaches the intended temporary limitation m
 These items are outside the documentation feature but are part of the current application.
 
 - **Daily tasklist page (`/tasklist`).** Each team member has a tasklist per day with tasks and subtasks (category, priority, estimate, status), edit and delete, a planned-versus-available capacity check, and start-of-day and end-of-day snapshots. (Updated 30 September) Each person opens their own tasklist and can create today's from the page; the Scrum Master can pick another member's tasklist, read only. After end of day is captured the tasklist is locked. The page is built from components in `src/components/tasklist/`.
-- **Carry forward API.** Tasks can be carried into another tasklist through the tasklist API; a locked target tasklist returns 409. (Updated 30 September) Only tasks from your own tasklists can be carried. There is no button for it in the UI yet.
+- **Carry forward API.** Tasks can be carried into another tasklist through the tasklist API; a locked target tasklist returns 409. (Updated 30 September) Only tasks from your own tasklists can be carried. (Updated 1 October) The tasklist page now has a **Carry Over Unfinished** button; see section 17.
 - **Team page (`/team-members`).** Lists team members and their skills. (Updated 30 September) The Scrum Master adds, deactivates and reactivates members and resets passwords here, and each member has a profile page. See section 16.
 - **Shared look and feel.** All pages use the shared classes and colour tokens in `src/app/globals.css`, one date format (`src/lib/format-date.ts`), and inline messages instead of browser alert popups.
 
@@ -740,9 +740,76 @@ The full rules, the API reference and the known limitations are in `_docs_/PLAN/
 
 ---
 
+# 17. Functions, Linked Daily Work and Time Spent (Phase 8 steps 1 to 4, added 1 October 2026)
+
+## Intent
+
+Sprints, sprint tasks and daily tasklists did not talk to each other. A daily task was free text, so nobody could say how far a feature had got, how long work actually took, or which daily work belonged to which sprint task. The senior team also asked for a weight per function, so that big features count for more.
+
+## Outcome
+
+Every sprint task belongs to a function (feature) and has a work type. Daily tasks can be linked to the sprint task they work on, and the time actually spent is recorded at End Day. This is the groundwork for progress, delay status and the 25 / 50 / 75 % marks (Phase 8 part B), and it gives the Daily Sprint Diary its totals.
+
+## Current solution
+
+- **Planning**: the AI returns a function and a work type (Development, Documentation, Testing, Research, Deployment) for every task, plus one documentation task per function. The Plan Sprint preview groups tasks by function and shows each function's weight (its share of the estimated hours). Nothing is saved until the Scrum Master removes any tasks they do not want and clicks **Save Sprint**.
+- **Sprint page**: tasks grouped by function with hours and weight; the Scrum Master sets a task's function and work type (for sprints planned earlier, or to correct the AI).
+- **Tasklist**: an optional **Sprint task** picker (only the person's own open sprint tasks in active sprints) fills in the title, work type and an estimate (the time left, no more than the day's available hours). Linked tasks show a `Feature · TASK-003` badge, and the list can be grouped by feature. Work outside the sprint can have a total estimate across days. **Carry Over Unfinished** copies the previous list's unfinished tasks, keeping the link and the total estimate.
+- **End Day** asks for the time spent on each task and, for linked tasks, whether the whole sprint task is finished. Logged time moves a To Do sprint task to In Progress; "finished" marks it Done. Everything is saved in one request with the End Day snapshot.
+- **Reopen**: the Scrum Master can move a Done sprint task back to In Progress.
+
+## How it helps the workflow
+
+- Function weights come from the estimates, so a big feature counts more without a separate guess.
+- Daily work is tied to the sprint without retyping, and the time spent shows where estimates were wrong.
+- Sprint task status follows the daily work, so the sprint page stays up to date.
+
+## Assumptions and limitations
+
+- The link, the total estimate and time spent are on main tasks only; subtasks follow their parent.
+- If a sprint has ended or a task was reassigned by End Day, the time is kept and only the status change is skipped, with a note.
+- Progress, delay status and the 25 / 50 / 75 % marks are not built yet (Phase 8 part B). The plan is `_docs_/PLAN/SUB-PHASES/PHASE-8.md`.
+- Checked with automated requests for each role and the planning steps with one real AI run.
+
+---
+
+# 18. Daily Sprint Diary and Time Off (added 3 October 2026)
+
+## Intent
+
+Every working day the Scrum Master posts a Sprint Diary in Google Chat. Most of the work was collecting and retyping each person's Yesterday and Today from their tasklists, which made the diary slow and sometimes incomplete.
+
+## Outcome
+
+The Scrum Master writes only the header; the app generates the rest from the tasklists, the sprint links and the time-off records, in the format the team already posts. The diary is copied to Google Chat in one click and the exact posted text is kept.
+
+## Current solution
+
+- **Time off** (Team page, Scrum Master): public holidays and leave, one entry per person, added for several people at once. Upcoming entries are listed and can be removed.
+- **Sprint Diary page** (`/sprint-diary`, Scrum Master): pick a date; the header (phase, macro scope, micro scope, status RED / ORANGE / GREEN) starts as a copy of the previous diary. The live preview adds overtime sprints, each active member's Yesterday (their latest earlier tasklist; Monday shows `Friday`) and Today (or `[To be updated]`, or `[Leave]`), task lines with `[spent / estimate]` totals across days, and upcoming time off.
+- **Copy for Google Chat** copies the preview; **Publish** keeps that exact text with the date and who published it. A published diary cannot be changed. Past diaries are listed on the page.
+- Members get the Not allowed page; the diary and time-off APIs are Scrum Master only.
+
+The design, how the totals are worked out, and a comparison with the posted diaries are in `_docs_/PLAN/DAILY_SPRINT_DIARY_DESIGN.md` (section 7).
+
+## How it helps the workflow
+
+- The slow part of the diary (collecting everyone's work) is done by the app, so the diary is complete and on time.
+- Totals such as `[35hr/48hr]` come from logged time instead of being worked out by hand, so overruns are visible.
+- Upcoming holidays and leave are recorded once and listed automatically; Phase 10 (capacity) will use the same records.
+
+## Assumptions and limitations
+
+- The totals are only as good as the linking and the time entered at End Day.
+- The header is text; structured milestones with slipped dates wait for Phase 8 part B.
+- Subtasks show their planned time only; time is logged on main tasks.
+- Checked with automated requests for each role, a run in a headless browser (load, live preview, save, copy, publish), and three person-days rebuilt from the posted diaries, whose lines and totals match.
+
+---
+
 # Where this leaves us
 
-The Internal Management System now has a functional foundation for sprint planning, task execution support, assignee recommendations, and centralized documentation, with sign-in and Scrum Master / Member roles across all of it.
+The Internal Management System now has a functional foundation for sprint planning, task execution support, assignee recommendations, and centralized documentation, with sign-in and Scrum Master / Member roles across all of it. (Updated 3 October) Daily work is linked to sprint tasks with the time spent, and the Daily Sprint Diary is generated from it; progress and delay tracking (Phase 8 part B) come next.
 
 The Documentation feature currently supports both:
 

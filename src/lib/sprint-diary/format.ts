@@ -126,23 +126,36 @@ function formatTasks(tasks: DiaryTask[]) {
 
 const OFF_LABELS = { LEAVE: '[Leave]', PUBLIC_HOLIDAY: '[Public holiday]' };
 
+// How the team labels the latest earlier list: "Yesterday" for the day
+// before, the weekday within the past week (Monday shows "Friday", as in
+// the posted diaries), and the date for anything older ("Sep 12").
+export function getPreviousDayLabel(listDate: string, diaryDate: string) {
+  const list = new Date(`${listDate.slice(0, 10)}T00:00:00Z`);
+  const days = Math.round(
+    (new Date(`${diaryDate.slice(0, 10)}T00:00:00Z`).getTime() -
+      list.getTime()) /
+      DAY_MS,
+  );
+
+  if (days === 1) return 'Yesterday';
+
+  if (days > 1 && days < 7) {
+    return list.toLocaleDateString('en-US', {
+      weekday: 'long',
+      timeZone: 'UTC',
+    });
+  }
+
+  return formatDiaryDate(listDate);
+}
+
 export function formatPerson(person: DiaryPerson, diaryDate: string) {
   const lines = [`${person.name}:`];
 
   if (!person.yesterday) {
     lines.push('Yesterday [No tasklist]');
   } else {
-    // The date is shown unless the list is from the day before, e.g. Monday
-    // shows Friday's list as "Yesterday (Oct 3)".
-    const dayBefore = new Date(
-      new Date(`${diaryDate}T00:00:00Z`).getTime() - DAY_MS,
-    )
-      .toISOString()
-      .slice(0, 10);
-    const label =
-      person.yesterday.date.slice(0, 10) === dayBefore
-        ? 'Yesterday'
-        : `Yesterday (${formatDiaryDate(person.yesterday.date)})`;
+    const label = getPreviousDayLabel(person.yesterday.date, diaryDate);
 
     if (person.yesterday.tasks.length === 0) {
       lines.push(`${label} [No tasks]`);

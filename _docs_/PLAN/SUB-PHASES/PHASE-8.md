@@ -1,6 +1,14 @@
 # Phase 8 — Progress Tracking & 25% / 50% / 75% Checks (Plan)
 
-*Plan only; nothing in this document is built yet. Written 30 September 2026 from a discussion with the senior team and from the code at that date. The decisions in section 12 were confirmed the same day, all as recommended. The plan was then checked against the code and updated: End Day saves time in one request, sprint task status rules, a carry-over button, a total estimate for work outside the sprint, and marks whose planned dates are calculated rather than stored.*
+*Steps 1 to 4 of section 11 were built on 30 September and 1 October 2026; steps 5 to 10 are not built yet (see the note below). Written 30 September 2026 from a discussion with the senior team and from the code at that date. The decisions in section 12 were confirmed the same day, all as recommended. The plan was then checked against the code and updated: End Day saves time in one request, sprint task status rules, a carry-over button, a total estimate for work outside the sprint, and marks whose planned dates are calculated rather than stored.*
+
+> **Built so far (steps 1 to 4), and where the build differs from this plan**
+>
+> * Planning only generates; the Scrum Master removes tasks on the preview and then saves. The AI's function names and work types are checked in code, and a documentation task is added to any function without one.
+> * The sprint-task link, the total estimate and time spent are on **main tasks only**; subtasks follow their parent, so nothing is counted twice.
+> * A link is accepted only for a sprint task assigned to the person, in an active sprint and not done. Carried-over tasks keep a link only while it is still valid.
+> * End Day pre-fills the planned time for tasks that were worked on and **0 for tasks still Pending**.
+> * Details are in section 17 of `_docs_/Internal_Management_System_Completed_Work.md`.
 
 Today the app can plan a sprint, assign tasks, and let each person keep a daily tasklist, but the three do not talk to each other. A daily task is free text, so nobody can say "Feature X is 60% done" or "this sprint will finish four days late". This phase connects them.
 

@@ -210,11 +210,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
     }
 
-    await prisma.tasklistTask.delete({
-      where: {
-        id: taskId,
-      },
-    });
+    // A main task's subtasks go with it. On its own the database would only
+    // empty their parent link (ON DELETE SET NULL), turning them into main
+    // tasks.
+    await prisma.$transaction([
+      prisma.tasklistTask.deleteMany({
+        where: { parentTaskId: taskId, tasklistId },
+      }),
+      prisma.tasklistTask.delete({
+        where: {
+          id: taskId,
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
