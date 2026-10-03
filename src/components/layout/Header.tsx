@@ -11,6 +11,7 @@ const navigation = [
   { name: 'Sprints', href: '/sprints' },
   { name: 'Team', href: '/team-members' },
   { name: 'Tasklist', href: '/tasklist' },
+  { name: 'Sprint Diary', href: '/sprint-diary', scrumMasterOnly: true },
   { name: 'Documentation', href: '/documentation' },
 ];
 

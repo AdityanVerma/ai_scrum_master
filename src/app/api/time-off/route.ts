@@ -77,10 +77,7 @@ export async function POST(request: Request) {
 
     const entries = await createTimeOff(parsed.data);
 
-    return NextResponse.json(
-      { success: true, data: entries },
-      { status: 201 },
-    );
+    return NextResponse.json({ success: true, data: entries }, { status: 201 });
   } catch (error) {
     console.error('Failed to add time off:', error);
 
